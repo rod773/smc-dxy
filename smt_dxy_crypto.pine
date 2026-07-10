@@ -1,0 +1,135 @@
+//@version=6
+indicator('SMT Crypto Dollar', overlay = true, max_lines_count = 500, max_labels_count = 500)
+
+// ─── Inputs ──────────────────────────────────────────────────────────────────
+showPanel = input.bool(true, 'Show CDXY Panel')
+showLabels = input.bool(true, 'Show Divergence Labels')
+showLines = input.bool(true, 'Show Swing Point Lines')
+pivotLen = input.int(5, 'Pivot Length', minval = 1)
+cdxySource = input.source(close, 'CDXY Source')
+
+// ─── Synthetic Crypto Dollar Index (CDXY) ───────────────────────────────────
+// Equal-weight inverse basket of BTC, ETH, XAU (gold). Rises when dollar is strong.
+btc = request.security('BINANCE:BTCUSDT', timeframe.period, close)
+eth = request.security('BINANCE:ETHUSDT', timeframe.period, close)
+xaut = request.security('BINANCE:XAUTUSDT', timeframe.period, close)
+
+btcHigh = request.security('BINANCE:BTCUSDT', timeframe.period, high)
+btcLow = request.security('BINANCE:BTCUSDT', timeframe.period, low)
+ethHigh = request.security('BINANCE:ETHUSDT', timeframe.period, high)
+ethLow = request.security('BINANCE:ETHUSDT', timeframe.period, low)
+xautHigh = request.security('BINANCE:XAUTUSDT', timeframe.period, high)
+xautLow = request.security('BINANCE:XAUTUSDT', timeframe.period, low)
+
+var float cdxyHigh = na
+var float cdxyLow = na
+var float cdxyClose = na
+var float cdxyPrev = na
+
+cdxyPrev := cdxyClose
+cdxyClose := (1 / btc + 1 / eth + 1 / xaut) * 50000
+cdxyHigh := (1 / btcLow + 1 / ethLow + 1 / xautLow) * 50000
+cdxyLow := (1 / btcHigh + 1 / ethHigh + 1 / xautHigh) * 50000
+
+cdxySourceVal = switch cdxySource
+    close => cdxyClose
+    high => cdxyHigh
+    low => cdxyLow
+
+// ─── Swing Points ─────────────────────────────────────────────────────────────
+isSwingHigh(src, l) =>
+    na(src[l]) ? false : src == ta.highest(src, l * 2 + 1)
+isSwingLow(src, l) =>
+    na(src[l]) ? false : src == ta.lowest(src, l * 2 + 1)
+
+// ─── Detect swings on main chart ──────────────────────────────────────────────
+swingHigh = isSwingHigh(high, pivotLen)
+swingLow = isSwingLow(low, pivotLen)
+
+// ─── Detect swings on CDXY ────────────────────────────────────────────────────
+cdxySwingHigh = isSwingHigh(cdxyHigh, pivotLen)
+cdxySwingLow = isSwingLow(cdxyLow, pivotLen)
+
+// ─── Store last two swing points for comparison ───────────────────────────────
+var float lastHighPrice = na
+var float lastLowPrice = na
+var int lastHighBar = na
+var int lastLowBar = na
+var float prevHighPrice = na
+var float prevLowPrice = na
+var int prevHighBar = na
+var int prevLowBar = na
+
+var float lastCdxyHigh = na
+var float lastCdxyLow = na
+var int lastCdxyHighBar = na
+var int lastCdxyLowBar = na
+var float prevCdxyHigh = na
+var float prevCdxyLow = na
+var int prevCdxyHighBar = na
+var int prevCdxyLowBar = na
+
+// Track swing highs on main
+if swingHigh
+    prevHighPrice := lastHighPrice
+    prevHighBar := lastHighBar
+    lastHighPrice := high
+    lastHighBar := bar_index
+
+// Track swing lows on main
+if swingLow
+    prevLowPrice := lastLowPrice
+    prevLowBar := lastLowBar
+    lastLowPrice := low
+    lastLowBar := bar_index
+
+// Track swing highs on CDXY
+if cdxySwingHigh
+    prevCdxyHigh := lastCdxyHigh
+    prevCdxyHighBar := lastCdxyHighBar
+    lastCdxyHigh := cdxyHigh
+    lastCdxyHighBar := bar_index
+
+// Track swing lows on CDXY
+if cdxySwingLow
+    prevCdxyLow := lastCdxyLow
+    prevCdxyLowBar := lastCdxyLowBar
+    lastCdxyLow := cdxyLow
+    lastCdxyLowBar := bar_index
+
+// ─── Divergence Detection ─────────────────────────────────────────────────────
+bearishSMT = na(prevHighPrice) or na(prevCdxyHigh) ? false : lastHighPrice > prevHighPrice and lastCdxyHigh < prevCdxyHigh
+bullishSMT = na(prevLowPrice) or na(prevCdxyLow) ? false : lastLowPrice < prevLowPrice and lastCdxyLow > prevCdxyLow
+hiddenBearish = na(prevHighPrice) or na(prevCdxyHigh) ? false : lastHighPrice < prevHighPrice and lastCdxyHigh > prevCdxyHigh
+hiddenBullish = na(prevLowPrice) or na(prevCdxyLow) ? false : lastLowPrice > prevLowPrice and lastCdxyLow < prevCdxyLow
+
+// ─── Plotting ─────────────────────────────────────────────────────────────────
+if showLines and bearishSMT and not na(prevHighPrice) and not na(prevCdxyHigh)
+    line.new(prevHighBar, prevHighPrice, lastHighBar, lastHighPrice, color = color.red, width = 1, style = line.style_solid)
+    line.new(prevCdxyHighBar, prevCdxyHigh, lastCdxyHighBar, lastCdxyHigh, color = color.green, width = 1, style = line.style_dashed)
+
+if showLines and bullishSMT and not na(prevLowPrice) and not na(prevCdxyLow)
+    line.new(prevLowBar, prevLowPrice, lastLowBar, lastLowPrice, color = color.green, width = 1, style = line.style_solid)
+    line.new(prevCdxyLowBar, prevCdxyLow, lastCdxyLowBar, lastCdxyLow, color = color.red, width = 1, style = line.style_dashed)
+
+// Labels
+if showLabels and bearishSMT
+    label.new(lastHighBar, high, 'SMT\nBearish', style = label.style_label_down, color = color.maroon, textcolor = color.white, size = size.small)
+if showLabels and bullishSMT
+    label.new(lastLowBar, low, 'SMT\nBullish', style = label.style_label_up, color = color.green, textcolor = color.white, size = size.small)
+
+// ─── Dashboard (CDXY Panel) ────────────────────────────────────────────────────
+var table cdxyTable = table.new(position.bottom_right, 2, 4, bgcolor = color.new(color.black, 80), border_width = 1, border_color = color.gray)
+if showPanel
+    cdxyChange = (cdxyClose - cdxyPrev) / cdxyPrev * 100
+    cdxyColor = cdxyChange >= 0 ? color.green : color.red
+    table.cell(cdxyTable, 0, 0, 'CDXY', text_color = color.white, text_size = size.small)
+    table.cell(cdxyTable, 1, 0, str.tostring(cdxyClose, '#.##'), text_color = cdxyColor, text_size = size.small)
+    table.cell(cdxyTable, 0, 1, 'Chg %', text_color = color.gray, text_size = size.small)
+    table.cell(cdxyTable, 1, 1, str.tostring(cdxyChange, '#.##') + '%', text_color = cdxyColor, text_size = size.small)
+else
+    table.clear(cdxyTable, 0, 0, 1, 3)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+alertcondition(bearishSMT, title = 'Bearish SMT Divergence', message = 'Bearish SMT divergence detected on {{ticker}} vs CDXY')
+alertcondition(bullishSMT, title = 'Bullish SMT Divergence', message = 'Bullish SMT divergence detected on {{ticker}} vs CDXY')

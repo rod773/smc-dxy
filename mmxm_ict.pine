@@ -1,0 +1,538 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TFlab
+
+//@version=5
+
+indicator("MMXM ICT [TradingFinder] Market Maker Model PO3 CHoCH/CSID + FVG", "MMXM SMR TFlab", overlay = true, max_bars_back = 5000, max_lines_count = 500, max_labels_count = 500)
+
+
+//import Libraries
+    //import Order Block Refiner
+import TFlab/OrderBlockRefiner_TradingFinder/2 as Refiner
+    //import Order Block Drawing  Library
+import TFlab/OrderBlockDrawing_TradingFinder/4 as Drawing
+    //import FVD Detector Library
+import TFlab/FVGDetectorLibrary/3 as FVG
+    //import Alert Sender Library
+import TFlab/AlertSenderLibrary_TradingFinder/1 as Alert
+
+//Input
+TF = input.timeframe('60', 'Higher TimeFrame PD Array', group = 'Logical Setting')
+SwingPeriod = input.int(50, 'PD Array Period' , minval = 1, group = 'Logical Setting')
+ATR_Coefficient = input.float(1, 'ATR Coefficient Threshold' , minval = 0, group = 'Logical Setting')
+MaxSwingBack_Method = input.string('All', 'Max Swing Back Method' , ['All', 'Custom'], group = 'Logical Setting')
+MaxSwingBack = input.int(100, 'Max Swing Back' , minval = 1, group = 'Logical Setting')
+Sym = input.symbol('XAUUSD' , 'Second Symbol for SMT', group = 'Logical Setting')
+n = input.int(4, title  ="SMT Fractal Periods", minval=1 , group = 'Logical Setting')
+FVG_Length = input.int(150, 'FVG Validity Period' , minval = 1, group = 'Logical Setting')
+MSS_Length =  input.int(150, 'MSS Validity Period' , minval = 1, group = 'Logical Setting')
+
+    //FVG Filter
+
+PFVGFilter = input.bool(false, 'FVG Filter ............',  group = 'FVG Logical Setting' , inline = 'FVG Filter')
+PFVGFilterType = input.string('Defensive', '', ['Very Aggressive' , 'Aggressive' , 'Defensive' , 'Very Defensive'], group = 'FVG Logical Setting', inline = 'FVG Filter' ,
+ tooltip = 'If it is "On", this filter will filter "FVGs" based on the width of the Zone.'  + 
+ 'From "Very Aggressive" to "Very Defensive" the width of the "FVG" decreases.')
+MLFVG = input.string('Proximal' , 'Mitigation Level FVG', ['Proximal', '50 % OB', 'Distal'], 
+ tooltip= 'Using this entry, you can determine which level the price reacts to in a FVG.', group = 'FVG Logical Setting')
+
+   // Alert
+AlertName = input.string('MMXM ICT [TradingFinder]', 'Alert Name', group = 'Alert')
+Frequncy = input.string('Once Per Bar' , 'Message Frequency' , ['All', 'Once Per Bar' , 'Per Bar Close'], 'The triggering frequency. Possible values are: All'+ 
+ ' (all function calls trigger the alert), Once Per Bar (the first function call during the bar triggers the alert), ' +  
+ ' Per Bar Close (the function call triggers the alert only when it occurs during the last script iteration of the real-time bar,' +  
+ ' when it closes). The default is alert.freq_once_per_bar.)', group = 'Alert')
+UTC = input.string('UTC' , 'Show Alert time by Time Zone', group = 'Alert')
+MMXM_Bull = input.string('On', 'Alert Demand Mitigation', ['On', 'Off'], 'If you turn on the Alert, you can receive alerts and notifications after setting the "Alert".', group = 'Alert')
+MMXM_Bear = input.string('On', 'Alert Supply Mitigation', ['On', 'Off'], 'If you turn on the Alert, you can receive alerts and notifications after setting the "Alert".', group = 'Alert')
+
+
+    //Display FVG
+
+DFVGShow  = input.bool(true, 'Demand FVG', inline = 'DFVG', group = 'FVG Display Setting')
+DFVGColor = input.color(#2195f36c, '', inline = 'DFVG', group = 'FVG Display Setting')
+
+SFVGShow  = input.bool(true, 'Supply FVG', inline = 'SFVG', group = 'FVG Display Setting')
+SFVGColor = input.color(#ff990070, '', inline = 'SFVG', group = 'FVG Display Setting')
+
+    //Display DMT
+
+Bull_Line   = input.bool(true   , 'Show SMT Divergence Line from the Bottom.') 
+Bull_Label  = input.bool(false  , 'Show SMT Divergence Label from the Bottom.') 
+Bear_Line   = input.bool(true   , 'Show SMT Divergence Line from the Top.') 
+Bear_Label  = input.bool(false  , 'Show SMT Divergence Label from the Top.') 
+
+    //Display HTF PD Array
+
+AShow = input.bool(true, 'Show All HTF LvL',group = 'Display Setting')
+HShow = input.bool(true, 'Show High HTF LvL',group = 'Display Setting', inline = 'H')
+LShow = input.bool(true, 'Show Low HTF LvL',group = 'Display Setting' , inline = 'L')
+
+HNColor = input.color(#570000 , 'Name',group = 'Display Setting', inline = 'H')
+LNColor = input.color(#003b05 , 'Name',group = 'Display Setting', inline = 'L')
+HLColor = input.color(#7e0000 , 'Line',group = 'Display Setting', inline = 'H')
+LLColor = input.color(#004600 , 'Line',group = 'Display Setting', inline = 'L')
+
+    //Display MSS
+
+AShow_MSS = input.bool(true, 'Show All MSS',group = 'Display Setting')
+HShow_MSS = input.bool(true, 'Show High MSS',group = 'Display Setting', inline = 'HMSS')
+LShow_MSS = input.bool(true, 'Show Low MSS',group = 'Display Setting' , inline = 'LMSS')
+
+HNColor_MSS = input.color(#6d0101 , 'Name',group = 'Display Setting', inline = 'HMSS')
+LNColor_MSS = input.color(#014f07 , 'Name',group = 'Display Setting', inline = 'LMSS')
+HLColor_MSS = input.color(#b90000b8 , 'Line',group = 'Display Setting', inline = 'HMSS')
+LLColor_MSS = input.color(#069206a7 , 'Line',group = 'Display Setting', inline = 'LMSS')
+
+
+[ATR] = request.security(syminfo.tickerid, timeframe.period, [ta.atr(200)])
+
+//HTF LvL Detector Function
+var bool MSS_H = na
+var bool MSS_L = na
+
+HTF_Detector(SwingPeriod, MaxSwingBack_Method, MaxSwingBack, ATR) => //Swing Failure 
+    const int Z = 100000000000000000
+
+    var MSH_P = array.new_float()
+    var MSH_I = array.new_int()
+    var MSL_P = array.new_float()
+    var MSL_I = array.new_int()
+
+    var MSH_Permit = array.new_bool()
+    var AOI_MSH = array.new_int()//Another Opportunity Index
+
+    var MSL_Permit = array.new_bool()
+    var AOI_MSL = array.new_int()//Another Opportunity Index
+
+    var float Last_MSH_P = 0.0
+    var int Last_MSH_I   = 0
+    var float Last_MSL_P = 0.0
+    var int Last_MSL_I   = 0
+
+    int HSwingBack = 0
+    int LSwingBack = 0
+    
+    var bool RealHTFLvL         = na
+    var bool ConsiderableHTFLvL = na
+
+    var float H_Price_HTFLvL = 0.0
+    var int   H_Index_HTFLvL = 0
+    var float L_Price_HTFLvL = 0.0
+    var int   L_Index_HTFLvL = 0
+
+    bool HAlert = na
+    bool LAlert = na  
+
+    MSH = ta.pivothigh(SwingPeriod , SwingPeriod)   // Major Swing High
+    MSL = ta.pivotlow(SwingPeriod , SwingPeriod)   // Major Swing Low
+
+    if not (not MSH)
+        MSH_P.push(high[SwingPeriod])
+        MSH_I.push(time[SwingPeriod])
+        MSH_Permit.push(true)
+        AOI_MSH.push(Z)
+
+    if not (not MSL)
+        MSL_P.push(low[SwingPeriod])
+        MSL_I.push(time[SwingPeriod])
+        MSL_Permit.push(true)
+        AOI_MSL.push(Z)
+
+    if  MSH_P.size() > 0 
+        Last_MSH_P := MSH_P.get(MSH_P.size() - 1)
+        Last_MSH_I := MSH_I.get(MSH_I.size() - 1)
+
+    if  MSL_P.size() > 0 
+        Last_MSL_P := MSL_P.get(MSL_P.size() - 1)
+        Last_MSL_I := MSL_I.get(MSL_I.size() - 1)
+
+    switch MaxSwingBack_Method
+        'All'    => HSwingBack := MSH_P.size() , LSwingBack := MSL_P.size()
+        'Custom' => HSwingBack := MaxSwingBack , LSwingBack := MaxSwingBack 
+
+
+    if MSH_P.size() > (MaxSwingBack_Method == 'All' ? 1 : HSwingBack)
+        for i = 1 to HSwingBack   by 1
+            if  MSH_Permit.get(MSH_P.size()  - i)
+                if    (bar_index <= AOI_MSH.get(AOI_MSH.size() - i) ) 
+                    if   (MSH_P.get(MSH_P.size() - i) - (ATR * ATR_Coefficient)  < high and MSH_P.get(MSH_P.size() - i) + (ATR * ATR_Coefficient)  > close and (AOI_MSH.get(AOI_MSH.size() - i) == Z) ) 
+                        MSH_Permit.set(MSH_P.size() - i  , false)
+                        H_Index_HTFLvL := MSH_I.get(MSH_P.size() - i)
+                        H_Price_HTFLvL := MSH_P.get(MSH_P.size() - i)
+                        HAlert := true
+                if ((MSH_P.get(MSH_P.size() - i) + (ATR * ATR_Coefficient) < close) and (AOI_MSH.get(AOI_MSH.size() - i) == Z))
+                    AOI_MSH.set(AOI_MSH.size() - i, bar_index)
+
+
+
+    if MSL_P.size() > (MaxSwingBack_Method == 'All' ? 1 : LSwingBack)
+        for i = 1 to  LSwingBack  by 1
+            if  MSL_Permit.get(MSL_P.size()  - i)
+                if    (bar_index <= AOI_MSL.get(AOI_MSL.size() - i) ) 
+                    if    (MSL_P.get(MSL_P.size() - i) + (ATR * ATR_Coefficient) > low and MSL_P.get(MSL_P.size() - i) - (ATR * ATR_Coefficient) < close and (AOI_MSL.get(AOI_MSL.size() - i) == Z))
+                        MSL_Permit.set(MSL_P.size() - i  , false)
+                        L_Index_HTFLvL := MSL_I.get(MSL_P.size() - i)
+                        L_Price_HTFLvL := MSL_P.get(MSL_P.size() - i)
+                        LAlert := true
+                if ((MSL_P.get(MSL_P.size() - i) - (ATR * ATR_Coefficient) > close) and (AOI_MSL.get(AOI_MSL.size() - i) == Z))
+                    AOI_MSL.set(AOI_MSL.size() - i, bar_index)
+    [nz(HAlert),H_Index_HTFLvL, H_Price_HTFLvL, nz(LAlert), L_Index_HTFLvL, L_Price_HTFLvL]
+
+
+var bool  HAlert = na 
+var int   H_Index_HTFLvL = na 
+var float H_Price_HTFLvL = na
+var bool  LAlert = na
+var int   L_Index_HTFLvL = na
+var float L_Price_HTFLvL = na 
+
+Drawing_PD(H_Cond, H_Index, H_Price, L_Cond, L_Index, L_Price) =>
+    var linefill  MSH_Line  = na
+    var line  MSH_Line_up  = na 
+    var line  MSH_Line_down  = na  
+
+    var label MSH_Label = na
+    var label MSH_Shap  = na
+
+    var linefill  MSL_Line   = na
+    var line  MSL_Line_up   = na
+    var line  MSL_Line_down   = na
+
+    var label MSL_Label = na
+    var label MSL_Shap  = na
+    var bool H_Permit = true
+    var bool L_Permit = true
+
+    if H_Cond and H_Permit
+        H_Permit := false
+        if AShow
+            if HShow
+                MSH_Line_up   := line.new(H_Index, H_Price + (ATR * ATR_Coefficient), time, H_Price + (ATR * ATR_Coefficient), color = na , style = line.style_solid , xloc = xloc.bar_time)
+                MSH_Line_down := line.new(H_Index, H_Price - (ATR * ATR_Coefficient), time, H_Price - (ATR * ATR_Coefficient), color = na , style = line.style_solid , xloc = xloc.bar_time)
+                MSH_Line      := linefill.new(MSH_Line_up, MSH_Line_down, color =  na )
+                MSH_Label := label.new(int(math.avg(H_Index , time)), H_Price, 'HTF PD Array', color = #ffffff00, textcolor = na , style = label.style_label_down, size = size.small, xloc = xloc.bar_time)
+               
+    if not HAlert
+        H_Permit := true
+    if L_Cond and L_Permit
+        L_Permit := false
+        if AShow
+            if LShow
+                MSL_Line_up   := line.new(L_Index, L_Price + (ATR * ATR_Coefficient), time, L_Price + (ATR * ATR_Coefficient), color = na , style = line.style_solid , xloc = xloc.bar_time)
+                MSL_Line_down := line.new(L_Index, L_Price - (ATR * ATR_Coefficient), time, L_Price - (ATR * ATR_Coefficient), color = na , style = line.style_solid , xloc = xloc.bar_time)
+                MSL_Line      := linefill.new(MSL_Line_up, MSL_Line_down , color = na)
+                MSL_Label := label.new(int(math.avg(L_Index , time)), L_Price , 'HTF PD Array', color =  #ffffff00, textcolor = na , style = label.style_label_up, size = size.small, xloc = xloc.bar_time)
+            
+    if not LAlert
+        L_Permit := true
+    if MSS_H
+        MSH_Line_up.set_color(HLColor)
+        MSH_Line_down.set_color(HLColor)
+        MSH_Line.set_color(color.new(HLColor,95))
+        MSH_Label.set_textcolor(HNColor)
+    if MSS_L
+        MSL_Line_up.set_color(LLColor)
+        MSL_Line_down.set_color(LLColor)
+        MSL_Line.set_color(color.new(LLColor,95) )
+        MSL_Label.set_textcolor(LNColor)
+
+//MSS Detector Function
+MSSLevelDetector(CondHigh, CondLow,DConditionFVG, DDFVG, DPFVG, BarDFVG, SConditionFVG, SDFVG, SPFVG, BarSFVG, Label ) =>
+    Body                     = close - open
+    var float MSSLvLP_L      = 0.0
+    var float MSSLvLP_H      = 0.0
+    var int MSSLvLI_L        = 0
+    var int MSSLvLI_H        = 0  
+    var bool Permit_HSet     = true
+    var bool Permit_LSet     = true
+    var bool Permit_HReset   = true
+    var bool Permit_LReset   = true   
+
+    var line  MSS_LineL      = na
+    var line  MSS_LineH      = na
+    var label MSS_NameH      = na
+    var label MSS_NameL      = na
+    var label MSS_ShapH      = na
+    var label MSS_ShapL      = na
+
+    var bool Bear_Trigger    = false
+    var bool Bull_Trigger    = false    
+    
+    var int   Bear_FVG       = 0 
+    var float Bear_FVG_D     = 0.0
+    var float Bear_FVG_P     = 0.0
+
+    var int   Bull_FVG       = 0 
+    var float Bull_FVG_D     = 0.0
+    var float Bull_FVG_P     = 0.0
+
+    var bool FVG_Bear_Trigger = false
+    var bool FVG_Bull_Trigger = false  
+
+    var FVG_Bear_D            = array.new_float()
+    var FVG_Bear_P            = array.new_float()
+    var FVG_Bear_I            = array.new_int()
+    
+    var FVG_Bull_D            = array.new_float()
+    var FVG_Bull_P            = array.new_float()
+    var FVG_Bull_I            = array.new_int()
+
+    var float H_P = 0.0
+    var int   H_I = 0
+    var float L_P = 0.0
+    var int   L_I = 0
+
+    // MSS Level
+    if bool(ta.pivothigh(2 , 1))
+        H_P := high[1]
+        H_I := bar_index[1]
+
+    if bool(ta.pivotlow(2 , 1))
+        L_P := low[1]
+        L_I := bar_index[1]
+  
+    if CondHigh
+
+        Permit_HSet := true 
+        if Permit_HSet and H_Index_HTFLvL != H_Index_HTFLvL[1]
+            Permit_HReset := true
+            MSSLvLP_H := L_P
+            MSSLvLI_H := L_I
+            if AShow_MSS and HShow_MSS
+                MSS_LineH := line.new(MSSLvLI_H, MSSLvLP_H, bar_index , MSSLvLP_H , color = na, style = line.style_dotted)
+                MSS_NameH := label.new(MSSLvLI_H + 1 , low[bar_index - MSSLvLI_H] - (ATR * 0.3) , Label, color = na, style = label.style_label_upper_left , textcolor = na, size = size.small)
+            Permit_HSet := false
+    if Permit_HReset[0]  
+        if SConditionFVG[0]
+            FVG_Bear_I.push(BarSFVG)
+            FVG_Bear_D.push(SDFVG)
+            FVG_Bear_P.push(SPFVG)
+        if FVG_Bear_I.size() > 0
+            if high > FVG_Bear_D.get(FVG_Bear_I.size() - 1)
+                FVG_Bear_I.remove(FVG_Bear_I.size() - 1)
+                FVG_Bear_D.remove(FVG_Bear_D.size() - 1)
+                FVG_Bear_P.remove(FVG_Bear_P.size() - 1)               
+
+        if  close[1] >= MSSLvLP_H and (bar_index[1]  - MSSLvLI_H) <= MSS_Length
+            MSS_LineH.set_x2(bar_index + 1)
+            
+        if  close[1]  <= MSSLvLP_H and (bar_index[1]  - MSSLvLI_H) <= MSS_Length
+            MSS_LineH.set_color(HLColor_MSS)
+            MSS_NameH.set_textcolor(HNColor_MSS)
+            Permit_HReset := false
+            if AShow_MSS and HShow_MSS
+                MSS_ShapH := label.new(bar_index , high + (ATR * 0.6), "", color = HNColor_MSS, style = label.style_triangledown , size = size.tiny)   
+
+    if CondLow
+
+        Permit_LSet := true 
+        if Permit_LSet and L_Index_HTFLvL != L_Index_HTFLvL[1]
+            Permit_LReset := true
+            MSSLvLP_L := H_P
+            MSSLvLI_L := H_I
+            if AShow_MSS and LShow_MSS
+                MSS_LineL := line.new(MSSLvLI_L, MSSLvLP_L, bar_index , MSSLvLP_L, color = na, style = line.style_dotted)
+                MSS_NameL := label.new(MSSLvLI_L + 1 , high[bar_index - MSSLvLI_L] + (ATR * 0.6) , Label, color = na, style = label.style_label_lower_right , textcolor = na , size = size.small)
+            Permit_LSet := false
+    if Permit_LReset[0]
+        if DConditionFVG[0]
+            FVG_Bull_I.push(BarDFVG)
+            FVG_Bull_D.push(DDFVG)
+            FVG_Bull_P.push(DPFVG)
+        if FVG_Bull_I.size() > 0
+            if low < FVG_Bull_D.get(FVG_Bull_I.size() - 1)
+                FVG_Bull_I.remove(FVG_Bull_I.size() - 1)
+                FVG_Bull_D.remove(FVG_Bull_D.size() - 1)
+                FVG_Bull_P.remove(FVG_Bull_P.size() - 1)   
+        if  close[0]  <= MSSLvLP_L and (bar_index[0]  - MSSLvLI_L) <= MSS_Length
+            MSS_LineL.set_x2(bar_index + 1)
+        if  close[0]  >= MSSLvLP_L and (bar_index[0]  - MSSLvLI_L) <= MSS_Length
+            MSS_LineL.set_color(LLColor_MSS)
+            MSS_NameL.set_textcolor(LNColor_MSS)
+            Permit_LReset := false
+            if AShow_MSS and LShow_MSS
+                MSS_ShapL := label.new(bar_index , low - (ATR * 0.6), "", color = LNColor_MSS, style = label.style_triangleup  , size = size.tiny)
+   
+    //Set FVG
+    if FVG_Bull_I.size() > 0 or (ta.change(FVG_Bull_I.size() > 0) and FVG_Bull_I.size() > 0)
+        Bull_FVG := FVG_Bull_I.get(FVG_Bull_I.size() - 1)
+        Bull_FVG_D := FVG_Bull_D.get(FVG_Bull_D.size() - 1)
+        Bull_FVG_P:= FVG_Bull_P.get(FVG_Bull_P.size() - 1)
+    if FVG_Bear_I.size() > 0 or (ta.change(FVG_Bear_I.size() > 0) and FVG_Bear_I.size() > 0)
+        Bear_FVG := FVG_Bear_I.get(FVG_Bear_I.size() - 1)
+        Bear_FVG_D := FVG_Bear_D.get(FVG_Bear_D.size() - 1)
+        Bear_FVG_P := FVG_Bear_P.get(FVG_Bear_P.size() - 1)
+
+    if Permit_HReset[1] and Permit_HReset == false
+        Bear_Trigger := true 
+        if FVG_Bear_I.size() > 0 and Bear_FVG != 0
+            FVG_Bear_Trigger := true
+        else
+            FVG_Bear_Trigger := false
+    else 
+        Bear_Trigger := false
+        FVG_Bear_Trigger := false
+
+    if Permit_LReset[1] and Permit_LReset == false
+        Bull_Trigger := true
+        if FVG_Bull_I.size() > 0 and Bull_FVG != 0
+            FVG_Bull_Trigger := true 
+        else 
+            FVG_Bull_Trigger := false                      
+    else 
+        Bull_Trigger := false
+        FVG_Bull_Trigger := false
+    //Reset FVG
+    if HAlert
+        Bear_FVG   := 0 
+        Bear_FVG_D := 0.0
+        Bear_FVG_P := 0.0
+        FVG_Bear_D.clear()
+        FVG_Bear_P.clear()
+        FVG_Bear_I.clear()
+    if LAlert
+        FVG_Bull_D.clear()
+        FVG_Bull_P.clear()
+        FVG_Bull_I.clear()
+        Bull_FVG   := 0 
+        Bull_FVG_D := 0.0
+        Bull_FVG_P := 0.0
+    [Bull_Trigger, Bear_Trigger,FVG_Bull_Trigger, FVG_Bear_Trigger, Bull_FVG, Bear_FVG, Bull_FVG_D, Bear_FVG_D,Bull_FVG_P, Bear_FVG_P,  Permit_LReset,  Permit_HReset]
+
+
+[HAlert_o, H_Index_HTFLvL_o, H_Price_HTFLvL_o, LAlert_o, L_Index_HTFLvL_o, L_Price_HTFLvL_o] = 
+ request.security(syminfo.tickerid, TF , HTF_Detector(SwingPeriod, MaxSwingBack_Method, MaxSwingBack, ATR), gaps = barmerge.gaps_on)
+
+
+if HAlert_o
+    HAlert      := true
+    H_Index_HTFLvL := H_Index_HTFLvL_o
+    H_Price_HTFLvL := H_Price_HTFLvL_o
+else 
+    HAlert      := false
+
+if LAlert_o
+    LAlert      := true
+    L_Index_HTFLvL := L_Index_HTFLvL_o
+    L_Price_HTFLvL := L_Price_HTFLvL_o
+else 
+    LAlert      := false
+
+// Drawing Higher TimeFrame Hunt
+Drawing_PD(HAlert, H_Index_HTFLvL, H_Price_HTFLvL, LAlert, L_Index_HTFLvL, L_Price_HTFLvL)
+
+//FVG Call Function
+[DConditionFVG, DDFVG, DPFVG, BarDFVG, SConditionFVG, SDFVG, SPFVG, BarSFVG] = FVG.FVGDetector(PFVGFilter ? 'On' : 'Off', PFVGFilterType, false, false)
+
+//Call MSS Function
+[Bull_Trigger, Bear_Trigger,FVG_Bull_Trigger, FVG_Bear_Trigger,  Bull_FVG, Bear_FVG,  Bull_FVG_D, Bear_FVG_D,Bull_FVG_P, Bear_FVG_P,  Permit_LReset,  Permit_HReset ] = 
+ MSSLevelDetector(HAlert,LAlert ,DConditionFVG, DDFVG, DPFVG, BarDFVG, SConditionFVG, SDFVG, SPFVG, BarSFVG,'MSS')
+
+if Permit_LReset == false and Permit_LReset[1]
+    MSS_L := true
+else
+    MSS_L := false
+
+if Permit_HReset == false and Permit_HReset[1]
+    MSS_H := true
+else
+    MSS_H := false
+
+[MitigationAlert_Bull, MitigationAlert_BB_Bull, ProximalPrice_BB_Bull, DistalPrice_BB_Bull, Index_BB_Bull] =  Drawing.OBDrawing('Demand', FVG_Bull_Trigger and (bar_index - Bull_FVG < 500)  , Bull_FVG_D  , Bull_FVG_P , Bull_FVG ,true , FVG_Length  ,MLFVG ,MLFVG , true ,false ,DFVGShow, false,DFVGColor, #ffffff00) //Bull_FVG 
+
+[MitigationAlert_Bear, MitigationAlert_BB_Bear, ProximalPrice_BB_Bear, DistalPrice_BB_Bear, Index_BB_Bear] =  Drawing.OBDrawing('Supply', FVG_Bear_Trigger and (bar_index - Bear_FVG < 500)  , Bear_FVG_D  , Bear_FVG_P , Bear_FVG ,true , FVG_Length  ,MLFVG ,MLFVG , true ,false ,SFVGShow, false,SFVGColor, #ffffff00) // Bear_FVG
+
+//Fractal////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+[Open, High, Low, Close] = request.security(Sym, timeframe.period,[open, high, low, close])
+// UpPivot
+UpPivot = bool(ta.pivothigh(n,n))
+
+// DownPivot
+DownPivot = bool(ta.pivotlow(n,n))
+
+//Data//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Bearish Divergence Data
+
+//price Data
+High_Last_Price = ta.valuewhen(UpPivot,high[n],0)
+High_Per_Price = ta.valuewhen(UpPivot,high[n],1)
+
+//MACD hist Data
+High_Last_Hist = ta.valuewhen(UpPivot, High[n],0)
+High_Per_Hist = ta.valuewhen(UpPivot, High[n],1)
+
+//Bar index Data
+High_Last_Bar = ta.valuewhen(UpPivot, bar_index[n],0)
+High_Per_Bar = ta.valuewhen(UpPivot, bar_index[n],1)
+
+// Time Condition Bullish
+Time_Condition_Bear = (High_Last_Bar + 30) > bar_index
+
+
+//Bearish Divergenc Detector////////////////////////
+Last_Bearish_Divergece = if High_Last_Hist > 0 and High_Per_Hist > 0 and Time_Condition_Bear and (High_Last_Bar - High_Per_Bar) < 30
+    ((High_Last_Price > High_Per_Price) and (High_Last_Hist < High_Per_Hist)) or ((High_Last_Price < High_Per_Price) and (High_Last_Hist > High_Per_Hist)) 
+else 
+    false
+
+// Bullish Divergennce Data
+
+//price Data
+Low_Last_Price = ta.valuewhen(DownPivot,low[n],0)
+Low_Per_Price = ta.valuewhen(DownPivot,low[n],1)
+
+//MACD hist Data
+Low_Last_Hist = ta.valuewhen(DownPivot, Low[n],0)
+Low_Per_Hist = ta.valuewhen(DownPivot, Low[n],1)
+
+//Bar index Data
+Low_Last_Bar = ta.valuewhen(DownPivot, bar_index[n],0)
+Low_Per_Bar = ta.valuewhen(DownPivot, bar_index[n],1)
+
+// Time Condition Bullish
+Time_Condition_Bull = (Low_Last_Bar + 30) > bar_index 
+
+//Bullish Divergenc Detector////////////////////////
+Last_Bullish_Divergece = if Low_Last_Hist > 0 and Low_Per_Hist > 0 and Time_Condition_Bull and (Low_Last_Bar - Low_Per_Bar) < 30
+    ((Low_Last_Price < Low_Per_Price) and (Low_Last_Hist > Low_Per_Hist)) or ((Low_Last_Price > Low_Per_Price) and (Low_Last_Hist < Low_Per_Hist))
+else 
+    false
+
+
+// plot
+//Divergence Line & Label
+
+var BeLine_OnChart  = array.new_line()
+var BuLine_OnChart  = array.new_line()
+var BeLabel_OnChart = array.new_label()
+var BuLabel_OnChart = array.new_label()
+
+if Last_Bullish_Divergece and Permit_LReset
+    
+    BuLine_OnChart.push(line.new(Low_Per_Bar, low[bar_index - Low_Per_Bar], Low_Last_Bar,low[bar_index - Low_Last_Bar] , color = Bull_Line ? color.black : na, width = 1 , style = line.style_dashed))
+    BuLabel_OnChart.push(label.new(Low_Last_Bar,low[bar_index - Low_Last_Bar] , '+SMT', color = Bull_Label ? color.green : na, textcolor = color.white, size = size.tiny , style = label.style_label_up))
+       
+if Last_Bearish_Divergece and Permit_HReset
+
+    BeLine_OnChart.push(line.new(High_Per_Bar,high[bar_index - High_Per_Bar], High_Last_Bar,high[bar_index - High_Last_Bar] , color = Bear_Line ? color.black : na, width = 1, style = line.style_dashed))
+        
+    
+    BeLabel_OnChart.push(label.new(High_Last_Bar,high[bar_index - High_Last_Bar] ,'-SMT', color = Bear_Label ? color.red : na, textcolor = color.white, size = size.tiny, style = label.style_label_down))
+
+
+if BuLine_OnChart.size() > 1
+    
+    line.delete(array.remove(BuLine_OnChart, 0))
+    label.delete(array.remove(BuLabel_OnChart, 0))
+
+
+if BeLine_OnChart.size() > 1
+    
+    line.delete(array.remove(BeLine_OnChart, 0))
+    label.delete(array.remove(BeLabel_OnChart, 0))
+
+//Alert Function
+Alert.AlertSender(MitigationAlert_Bull  , MMXM_Bull, AlertName, 'Bullish', 'Order Block Signal', 'Full' ,Frequncy, UTC, 'Off', 'Alert Demand Mitigation in MMXM ICT Setup', open, high, low, close,0,0,0, 0, 0)
+Alert.AlertSender(MitigationAlert_Bear  , MMXM_Bear, AlertName, 'Bearish', 'Order Block Signal', 'Full' ,Frequncy, UTC, 'Off', 'Alert Supply Mitigation in MMXM ICT Setup', open, high, low, close,0,0,0, 0, 0)
