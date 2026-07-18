@@ -252,6 +252,21 @@ boxTransp  = input.int(85, 'Box transparency (0-100)', group = "Sessions")
 lineStyle  = input.string('solid', 'Vertical line style', options = ['solid', 'dashed', 'dotted'], group = "Sessions")
 tzChoice   = input.string('Europe/Madrid', 'Timezone', options = ['Europe/Madrid', 'Europe/London', 'Asia/Tokyo', 'America/New_York'], group = "Sessions")
 
+//----------------------------------------------------------------------
+// 1g. Combined — Donchian Channels
+//----------------------------------------------------------------------
+dcLength1       = input.int(15, 'Upper Channel Length', minval = 1, group = 'Donchian Channels')
+dcLength2       = input.int(15, 'Lower Channel Length', minval = 1, group = 'Donchian Channels')
+dcOffset        = input.int(1, 'Offset Bars', minval = 0, group = 'Donchian Channels')
+dcShowUpper     = input.bool(true, 'Show Upper Channel', group = 'Donchian Channels')
+dcShowLower     = input.bool(true, 'Show Lower Channel', group = 'Donchian Channels')
+dcShowMid       = input.bool(true, 'Show Mid Line', group = 'Donchian Channels')
+dcColorUpper    = input.color(color.aqua, 'Upper Line Color', group = 'Donchian Channels')
+dcColorLower    = input.color(color.red, 'Lower Line Color', group = 'Donchian Channels')
+dcColorMid      = input.color(color.yellow, 'Mid Line Color', group = 'Donchian Channels')
+dcLineWidth     = input.int(3, 'Channel Line Width', minval = 1, maxval = 10, group = 'Donchian Channels')
+dcMidLineWidth  = input.int(1, 'Mid Line Width', minval = 1, maxval = 10, group = 'Donchian Channels')
+
 //======================================================================
 // SECTION 2 — USER-DEFINED TYPES
 //======================================================================
@@ -1486,6 +1501,17 @@ if showBoxes and exited(nyIn) and not na(nyBox)
     nyLow   := na
     nyStart := na
     nyBox   := na
+
+//----------------------------------------------------------------------
+// 5l. Combined — Donchian Channels
+//----------------------------------------------------------------------
+dcUpper = ta.highest(dcLength1)
+dcLower = ta.lowest(dcLength2)
+dcBasis = math.avg(dcUpper, dcLower)
+
+plot(dcShowLower ? dcLower : na, 'Donchian Lower', dcColorLower, dcLineWidth, style = plot.style_line, offset = dcOffset)
+plot(dcShowUpper ? dcUpper : na, 'Donchian Upper', dcColorUpper, dcLineWidth, style = plot.style_line, offset = dcOffset)
+plot(dcShowMid ? dcBasis : na, 'Donchian Mid', dcColorMid, dcMidLineWidth, style = plot.style_line, offset = dcOffset)
 
 //======================================================================
 // SECTION 6 — ALERTS
