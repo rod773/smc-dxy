@@ -1,0 +1,147 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © smartmoney_fibonacci
+//@version=6
+indicator("USDTX Strength Meter [Crypto Basket]", overlay = false, max_bars_back = 5000, max_labels_count = 100, max_lines_count = 100)
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 📌 𝙐𝙎𝙀𝙍 𝙄𝙉𝙋𝙐𝙏𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+
+smoothLen = input.int(14, "Smoothing (EMA)", minval = 1, group = "Settings")
+
+strongThresh = input.float(1.5, "Strong Threshold (StDev)", step = 0.1, group = "Strength Zones",
+     tooltip = "Standard deviations from mean for strong overbought/oversold.")
+weakThresh   = input.float(0.8, "Weak Threshold (StDev)", step = 0.1, group = "Strength Zones",
+     tooltip = "Standard deviations from mean for mildly overbought/oversold.")
+
+colBull    = input.color(#15b879, "Bullish USDT", group = "Colors")
+colBear    = input.color(#dd621a, "Bearish USDT", group = "Colors")
+colNeutral = input.color(#787b86, "Neutral", group = "Colors")
+colStrong  = input.color(#9c27b0, "Strong Zone", group = "Colors")
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 📌 𝙐𝙎𝘿𝙏𝙓 𝘾𝘼𝙇𝘾𝙐𝙇𝘼𝙏𝙄𝙊𝙉
+// --------------------------------------------------------------------------------------------------------------------{
+
+weightBTC = 0.45
+weightETH = 0.20
+weightSOL = 0.10
+weightBNB = 0.08
+weightXRP = 0.07
+weightADA = 0.05
+weightDOGE = 0.05
+
+baseBTCUSDT = 65000.0
+baseETHUSDT = 3500.0
+baseSOLUSDT = 150.0
+baseBNBUSDT = 600.0
+baseXRPUSDT = 0.50
+baseADAUSDT = 0.45
+baseDOGEUSDT = 0.12
+
+float btcusdt = request.security("BINANCE:BTCUSDT", timeframe.period, close)
+float ethusdt = request.security("BINANCE:ETHUSDT", timeframe.period, close)
+float solusdt = request.security("BINANCE:SOLUSDT", timeframe.period, close)
+float bnbusdt = request.security("BINANCE:BNBUSDT", timeframe.period, close)
+float xrpusdt = request.security("BINANCE:XRPUSDT", timeframe.period, close)
+float adausdt = request.security("BINANCE:ADAUSDT", timeframe.period, close)
+float dogeusdt = request.security("BINANCE:DOGEUSDT", timeframe.period, close)
+
+float rawUSDTX = na
+if not na(btcusdt) and not na(ethusdt) and not na(solusdt) and not na(bnbusdt) and not na(xrpusdt) and not na(adausdt) and not na(dogeusdt)
+    rawUSDTX := 100.0 * (baseBTCUSDT / btcusdt) * weightBTC +
+                 100.0 * (baseETHUSDT / ethusdt) * weightETH +
+                 100.0 * (baseSOLUSDT / solusdt) * weightSOL +
+                 100.0 * (baseBNBUSDT / bnbusdt) * weightBNB +
+                 100.0 * (baseXRPUSDT / xrpusdt) * weightXRP +
+                 100.0 * (baseADAUSDT / adausdt) * weightADA +
+                 100.0 * (baseDOGEUSDT / dogeusdt) * weightDOGE
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 📌 𝙈𝙀𝙏𝙍𝙄𝘾𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+
+var float usdtx = na
+usdtx := nz(rawUSDTX, nz(usdtx[1], usdtx))
+
+float usdtxSmooth = not na(usdtx) ? ta.ema(usdtx, smoothLen) : na
+
+float mean   = not na(usdtxSmooth) ? ta.sma(usdtxSmooth, 50) : na
+float stdev  = not na(usdtxSmooth) ? ta.stdev(usdtxSmooth, 50) : na
+float zScore = not na(mean) and not na(stdev) and stdev > 0 ? (usdtxSmooth - mean) / stdev : na
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 📌 𝙑𝙄𝙎𝙐𝘼𝙇𝙄𝙕𝘼𝙏𝙄𝙊𝙉
+// --------------------------------------------------------------------------------------------------------------------{
+
+float upperStrong = not na(mean) and not na(stdev) ? mean + strongThresh * stdev : na
+float upperWeak   = not na(mean) and not na(stdev) ? mean + weakThresh * stdev : na
+float lowerWeak   = not na(mean) and not na(stdev) ? mean - weakThresh * stdev : na
+float lowerStrong = not na(mean) and not na(stdev) ? mean - strongThresh * stdev : na
+
+plot(usdtxSmooth, "USDTX", color = not na(zScore) and zScore > weakThresh ? colBear : not na(zScore) and zScore < -weakThresh ? colBull : colNeutral, linewidth = 2)
+plot(usdtx, "USDTX Raw", color = color.new(#787b86, 70), linewidth = 1, display = display.none)
+
+pUpperStrong = plot(upperStrong, "Upper Strong", display = display.none)
+pUpperWeak   = plot(upperWeak,   "Upper Weak",   display = display.none)
+pLowerWeak   = plot(lowerWeak,   "Lower Weak",   display = display.none)
+pLowerStrong = plot(lowerStrong, "Lower Strong", display = display.none)
+fill(pUpperStrong, pUpperWeak, color.new(colStrong, 85), title = "Overbought Zone")
+fill(pLowerWeak, pLowerStrong, color.new(colStrong, 85), title = "Oversold Zone")
+
+bgcolor(not na(zScore) and zScore > weakThresh ? color.new(colBear, 90) : na, title="USDT Strong BG")
+bgcolor(not na(zScore) and zScore < -weakThresh ? color.new(colBull, 90) : na, title="USDT Weak BG")
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 📌 𝘼𝙇𝙀𝙍𝙏𝙎
+// --------------------------------------------------------------------------------------------------------------------{
+
+bool alertStrongOverbought = not na(zScore) and not na(zScore[1]) and ta.crossover(zScore, strongThresh)
+bool alertStrongOversold   = not na(zScore) and not na(zScore[1]) and ta.crossunder(zScore, -strongThresh)
+
+alertcondition(alertStrongOverbought, title="USDTX Strongly Overbought", message="USDTX is strongly overbought — potential USDT reversal.")
+alertcondition(alertStrongOversold, title="USDTX Strongly Oversold", message="USDTX is strongly oversold — potential USDT weakness.")
+
+// --------------------------------------------------------------------------------------------------------------------}
+// 📌 𝙏𝘼𝘽𝙇𝙀 (last bar)
+// --------------------------------------------------------------------------------------------------------------------{
+
+if barstate.islast
+    string zStr = na(zScore) ? "—" : (zScore >= 0 ? "+" : "") + str.tostring(zScore, "#.##")
+    string tableText = ""
+    tableText += "USDTX: " + str.tostring(usdtxSmooth, "#.##") + "\n"
+    tableText += "Z-Score: " + zStr + "\n"
+    tableText += "Signal: "
+
+    if na(zScore)
+        tableText += "—"
+    else if zScore > strongThresh
+        tableText += "STRONG OVERBOUGHT"
+    else if zScore > weakThresh
+        tableText += "Overbought"
+    else if zScore < -strongThresh
+        tableText += "STRONG OVERSOLD"
+    else if zScore < -weakThresh
+        tableText += "Oversold"
+    else
+        tableText += "Neutral"
+
+    tableText += "\n\n"
+    if not na(btcusdt)
+        tableText += "BTC: " + str.tostring(btcusdt, "#.##") + "\n"
+    if not na(ethusdt)
+        tableText += "ETH: " + str.tostring(ethusdt, "#.##") + "\n"
+    if not na(solusdt)
+        tableText += "SOL: " + str.tostring(solusdt, "#.##") + "\n"
+    if not na(bnbusdt)
+        tableText += "BNB: " + str.tostring(bnbusdt, "#.##") + "\n"
+
+    var infoTable = table.new(position.top_right, 1, 1,
+         bgcolor = color.new(#1e222d, 85),
+         border_color = color.new(#787b86, 60),
+         border_width = 1)
+    table.cell(infoTable, 0, 0, tableText,
+         text_color = chart.fg_color,
+         text_size = size.small,
+         text_halign = text.align_left)
+// --------------------------------------------------------------------------------------------------------------------}
