@@ -1513,6 +1513,12 @@ plot(dcShowLower ? dcLower : na, 'Donchian Lower', dcColorLower, dcLineWidth, st
 plot(dcShowUpper ? dcUpper : na, 'Donchian Upper', dcColorUpper, dcLineWidth, style = plot.style_line, offset = dcOffset)
 plot(dcShowMid ? dcBasis : na, 'Donchian Mid', dcColorMid, dcMidLineWidth, style = plot.style_line, offset = dcOffset)
 
+//----------------------------------------------------------------------
+// 5m. EMA 5 High
+//----------------------------------------------------------------------
+plot(ta.ema(high, 5), 'EMA 5 High', color.green, 2)
+plot(ta.ema(low, 5), 'EMA 5 Low', color.red, 2)
+
 //======================================================================
 // SECTION 6 — ALERTS
 //======================================================================
