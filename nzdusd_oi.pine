@@ -1,0 +1,212 @@
+//@version=6
+indicator("NZDUSD Open Interest", overlay = false, max_bars_back = 5000, max_labels_count = 100, max_lines_count = 100)
+
+// ─── Inputs ──────────────────────────────────────────────────────────────────
+
+oiSource = input.symbol("6N1!_OI", "OI Data Source", tooltip = "Symbol providing open interest (e.g. 6N1!_OI for NZD/USD futures OI)")
+
+oiSmoothLen = input.int(14, "OI Smoothing (MA)", minval = 1, group = "Settings")
+oiDeltaLen   = input.int(5, "OI Delta Smoothing", minval = 1, group = "Settings")
+
+showRaw     = input.bool(true,  "Show Open Interest", group = "Display")
+showMA      = input.bool(true,  "Show OI Moving Average", group = "Display")
+showDelta   = input.bool(true,  "Show OI Delta (Histogram)", group = "Display")
+showZones   = input.bool(true,  "Show Strength Zones", group = "Display")
+showDiv     = input.bool(true,  "Show OI/Price Divergence", group = "Display")
+showTable   = input.bool(true,  "Show Info Table", group = "Display")
+
+colOI      = input.color(#2962ff, "Open Interest", group = "Colors")
+colOIMA    = input.color(#ff9100, "OI MA", group = "Colors")
+colDeltaUp = input.color(#00c853, "Delta Up", group = "Colors")
+colDeltaDn = input.color(#ff1744, "Delta Down", group = "Colors")
+colBullDiv = input.color(#00e676, "Bullish Divergence", group = "Colors")
+colBearDiv = input.color(#ff5252, "Bearish Divergence", group = "Colors")
+
+// ─── Data ─────────────────────────────────────────────────────────────────────
+
+string chartSymbol = syminfo.tickerid
+
+float chartClose = request.security(chartSymbol, timeframe.period, close)
+float chartHigh  = request.security(chartSymbol, timeframe.period, high)
+float chartLow   = request.security(chartSymbol, timeframe.period, low)
+
+float rawOI = request.security(oiSource, "1D", close)
+
+var float oi = na
+oi := nz(rawOI, nz(oi[1], na))
+
+float oiMA  = na
+float oiDelta = 0.0
+float oiDeltaSmooth = na
+float oiMean  = na
+float oiStdev = na
+
+float oiMASeries   = ta.sma(oi, oiSmoothLen)
+float oiMeanSeries  = ta.sma(oi, 50)
+float oiStdevSeries = ta.stdev(oi, 50)
+
+if not na(oi)
+    oiMA := oiMASeries
+    oiMean := oiMeanSeries
+    oiStdev := oiStdevSeries
+
+if not na(oi) and not na(oi[1])
+    oiDelta := oi - oi[1]
+
+float oiDeltaSeries = ta.sma(oiDelta, oiDeltaLen)
+if not na(oiDelta)
+    oiDeltaSmooth := oiDeltaSeries
+
+// ─── Z-Score ──────────────────────────────────────────────────────────────────
+
+float oiZ     = not na(oiMean) and not na(oiStdev) and oiStdev > 0 ? (oi - oiMean) / oiStdev : na
+
+// ─── Swing Detection for Divergence ───────────────────────────────────────────
+
+isSwingHigh(src, l) =>
+    float h = ta.highest(src, l * 2 + 1)
+    na(src[l]) ? false : src == h
+
+isSwingLow(src, l) =>
+    float lw = ta.lowest(src, l * 2 + 1)
+    na(src[l]) ? false : src == lw
+
+pivotLen = input.int(5, "Pivot Length", group = "Divergence", minval = 1)
+
+priceSwingHigh = isSwingHigh(chartHigh, pivotLen)
+priceSwingLow  = isSwingLow(chartLow, pivotLen)
+oiSwingHigh    = isSwingHigh(oi, pivotLen)
+oiSwingLow     = isSwingLow(oi, pivotLen)
+
+var float lastPriceHigh = na
+var float lastPriceLow  = na
+var int   lastPriceHighBar = na
+var int   lastPriceLowBar  = na
+var float prevPriceHigh = na
+var float prevPriceLow  = na
+var int   prevPriceHighBar = na
+var int   prevPriceLowBar  = na
+
+var float lastOIH = na
+var float lastOIL = na
+var int   lastOIHBar = na
+var int   lastOILBar = na
+var float prevOIH = na
+var float prevOIL = na
+var int   prevOIHBar = na
+var int   prevOILBar = na
+
+if priceSwingHigh
+    prevPriceHigh := lastPriceHigh
+    prevPriceHighBar := lastPriceHighBar
+    lastPriceHigh := chartHigh
+    lastPriceHighBar := bar_index
+
+if priceSwingLow
+    prevPriceLow := lastPriceLow
+    prevPriceLowBar := lastPriceLowBar
+    lastPriceLow := chartLow
+    lastPriceLowBar := bar_index
+
+if oiSwingHigh
+    prevOIH := lastOIH
+    prevOIHBar := lastOIHBar
+    lastOIH := oi
+    lastOIHBar := bar_index
+
+if oiSwingLow
+    prevOIL := lastOIL
+    prevOILBar := lastOILBar
+    lastOIL := oi
+    lastOILBar := bar_index
+
+bearishDiv = not na(prevPriceHigh) and not na(prevOIH) and not na(lastPriceHigh) and not na(lastOIH) and lastPriceHigh > prevPriceHigh and lastOIH < prevOIH
+
+bullishDiv = not na(prevPriceLow) and not na(prevOIL) and not na(lastPriceLow) and not na(lastOIL) and lastPriceLow < prevPriceLow and lastOIL > prevOIL
+
+// ─── Plotting ─────────────────────────────────────────────────────────────────
+
+float upperBand = not na(oiMean) and not na(oiStdev) ? oiMean + oiStdev * 2 : na
+float lowerBand = not na(oiMean) and not na(oiStdev) ? oiMean - oiStdev * 2 : na
+
+pOI    = plot(showRaw ? oi : na, "Open Interest", colOI, linewidth = 2)
+pOIMA  = plot(showMA ? oiMA : na, "OI MA", colOIMA, linewidth = 2)
+pUpper = plot(showZones and not na(upperBand) ? upperBand : na, "Upper Band", color.new(#787b86, 50), linewidth = 1)
+pLower = plot(showZones and not na(lowerBand) ? lowerBand : na, "Lower Band", color.new(#787b86, 50), linewidth = 1)
+fill(pUpper, pLower, color.new(#787b86, 90), title = "Normal Range")
+
+plot(showDelta ? oiDeltaSmooth : na, "OI Delta", oiDeltaSmooth >= 0 ? colDeltaUp : colDeltaDn, linewidth = 3, style = plot.style_histogram)
+
+// ─── Divergence Lines and Labels ──────────────────────────────────────────────
+
+if showDiv and bearishDiv and not na(prevPriceHigh) and not na(prevOIH)
+    line.new(prevPriceHighBar, prevPriceHigh, lastPriceHighBar, lastPriceHigh,
+      color = colBearDiv, width = 1, style = line.style_solid)
+    line.new(prevOIHBar, prevOIH, lastOIHBar, lastOIH,
+      color = colBearDiv, width = 1, style = line.style_dashed)
+    label.new(lastPriceHighBar, chartHigh, "Bearish OI Div",
+      style = label.style_label_down, color = colBearDiv, textcolor = color.white, size = size.small)
+
+if showDiv and bullishDiv and not na(prevPriceLow) and not na(prevOIL)
+    line.new(prevPriceLowBar, prevPriceLow, lastPriceLowBar, lastPriceLow,
+      color = colBullDiv, width = 1, style = line.style_solid)
+    line.new(prevOILBar, prevOIL, lastOILBar, lastOIL,
+      color = colBullDiv, width = 1, style = line.style_dashed)
+    label.new(lastPriceLowBar, chartLow, "Bullish OI Div",
+      style = label.style_label_up, color = colBullDiv, textcolor = color.white, size = size.small)
+
+// ─── Table ────────────────────────────────────────────────────────────────────
+
+if showTable and barstate.islast
+    string oiZStr = na(oiZ) ? "—" : str.tostring(oiZ, "#.##")
+    string oiStr  = na(oi) ? "—" : str.tostring(oi, "#,###")
+    string oiMAStr = na(oiMA) ? "—" : str.tostring(oiMA, "#,###")
+
+    string tableText = ""
+    tableText += "Open Interest\n"
+    tableText += "─────────────────────\n"
+    tableText += "OI:     " + oiStr + "\n"
+    tableText += "OI MA:  " + oiMAStr + "\n"
+    tableText += "OI Z:   " + oiZStr + "\n"
+    tableText += "Signal: "
+
+    if not na(oiZ)
+        if oiZ > 2.0
+            tableText += "Extremely High"
+        else if oiZ > 1.0
+            tableText += "High"
+        else if oiZ < -2.0
+            tableText += "Extremely Low"
+        else if oiZ < -1.0
+            tableText += "Low"
+        else
+            tableText += "Neutral"
+    else
+        tableText += "—"
+
+    if not na(chartClose)
+        tableText += "\n─────────────────────\n"
+        tableText += syminfo.tickerid + ": " + str.tostring(chartClose, "$#.#####")
+
+    var infoTable = table.new(position.top_right, 1, 1,
+      bgcolor = color.new(#1e222d, 85),
+      border_color = color.new(#787b86, 60),
+      border_width = 1)
+    table.cell(infoTable, 0, 0, tableText,
+      text_color = chart.fg_color,
+      text_size = size.small,
+      text_halign = text.align_left)
+
+// ─── Alerts ───────────────────────────────────────────────────────────────────
+
+alertcondition(bearishDiv, title = "Bearish OI Divergence",
+  message = "Price making higher high while Open Interest makes lower high — bearish divergence")
+
+alertcondition(bullishDiv, title = "Bullish OI Divergence",
+  message = "Price making lower low while Open Interest makes higher low — bullish divergence")
+
+alertcondition(not na(oiZ) and oiZ > 2.0, title = "OI Extremely High",
+  message = "Open interest is extremely high (z-score > 2.0)")
+
+alertcondition(not na(oiZ) and oiZ < -2.0, title = "OI Extremely Low",
+  message = "Open interest is extremely low (z-score < -2.0)")
