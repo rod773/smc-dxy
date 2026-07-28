@@ -1546,7 +1546,7 @@ ma1down = ma1 < ma1[1]
 maColor = ma1up ? color.new(#1cff78, 0) : ma1down ? color.new(#FF0000, 0) : color.new(#ffeb3b, 0)
 
 plot(ma1, "MA 1 (9.1)", linewidth=2, color=maColor)
-plot(showMa2 ? ma2 : na, "MA 2 (50)", linewidth=2, color=color.new(#9C27B0, 0))
+plot(showMa2 ? ma2 : na, "MA 2 (50)", linewidth=2, color=color.new(#FFFFFF, 0))
 
 buySignal  = ma1up and not ma1up[1]
 sellSignal = ma1down and not ma1down[1]
