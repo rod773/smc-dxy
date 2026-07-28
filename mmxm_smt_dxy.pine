@@ -279,6 +279,11 @@ dcColorMid      = input.color(color.yellow, 'Mid Line Color', group = 'Donchian 
 dcLineWidth     = input.int(3, 'Channel Line Width', minval = 1, maxval = 10, group = 'Donchian Channels')
 dcMidLineWidth  = input.int(1, 'Mid Line Width', minval = 1, maxval = 10, group = 'Donchian Channels')
 
+//----------------------------------------------------------------------
+// 1h. Larry Williams — Market Structure
+//----------------------------------------------------------------------
+sh_im = input.bool(true, "Show Intermediate Trend Change Icons")
+
 //======================================================================
 // SECTION 2 — USER-DEFINED TYPES
 //======================================================================
@@ -371,6 +376,20 @@ var float smtPrevDL = na
 var int   smtPrevDHB = na
 var int   smtPrevDLB = na
 var table smtTbl     = na
+
+//--- Larry Williams Market Structure variables
+var array<float> swHi_arr_highs = array.new<float>()
+var array<float> swHi_arr_lows = array.new<float>()
+var array<float> swLow_arr_highs = array.new<float>()
+var array<float> swLow_arr_lows = array.new<float>()
+var int sw_dir = 1
+var int l_bi = 0
+var int h_bi = 0
+var line up_line = na
+var line dw_line = na
+var int im_dir = 1
+var array<float> im_tops = array.new<float>()
+var array<float> im_bot = array.new<float>()
 
 //--- Session variables
 var float asiaHigh = na
@@ -1578,6 +1597,86 @@ plot(dcShowMid ? dcBasis : na, 'Donchian Mid', dcColorMid, dcMidLineWidth, style
 //----------------------------------------------------------------------
 plot(ta.ema(high, 5), 'EMA 5 High', color.green, 2)
 plot(ta.ema(low, 5), 'EMA 5 Low', color.red, 2)
+
+//----------------------------------------------------------------------
+// 5n. Larry Williams — Market Structure
+//----------------------------------------------------------------------
+sw_dir_ser = sw_dir
+sw_dir_ult_ser = sw_dir
+
+// Init
+if swHi_arr_highs.size() == 0
+    swHi_arr_highs.unshift(high)
+    swLow_arr_highs.unshift(high)
+
+if swLow_arr_highs.size() == 0
+    swLow_arr_highs.unshift(high)
+    swLow_arr_lows.unshift(high)
+
+// Add values
+if swHi_arr_highs.size() > 0
+    if high > swHi_arr_highs.first() and sw_dir == 1
+        swHi_arr_highs.unshift(high)
+        swHi_arr_lows.unshift(low)
+        h_bi := bar_index
+
+if swLow_arr_lows.size() > 0
+    if low < swLow_arr_lows.first() and sw_dir == -1
+        swLow_arr_highs.unshift(high)
+        swLow_arr_lows.unshift(low)
+        l_bi := bar_index
+
+// Trend Change code
+if swHi_arr_lows.size() > 0 and sw_dir == 1
+    if low < swHi_arr_lows.first()
+        sw_dir := -1
+        swLow_arr_highs.unshift(high)
+        swLow_arr_lows.unshift(low)
+        l_bi := bar_index
+
+if swHi_arr_highs.size() > 0 and sw_dir == -1 and sw_dir_ser == -1
+    if high > swLow_arr_highs.first()
+        sw_dir := 1
+        swHi_arr_highs.unshift(high)
+        swHi_arr_lows.unshift(low)
+        h_bi := bar_index
+
+// Drawing lines on trend change
+if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
+    up_line := line.new(l_bi, swLow_arr_lows.first(), bar_index, swHi_arr_highs.first(), color=color.green)
+    dw_line.set_xy2(l_bi, swLow_arr_lows.first())
+
+if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1 and swLow_arr_lows.size() > 0
+    dw_line := line.new(h_bi, swHi_arr_highs.first(), bar_index, swLow_arr_lows.first(), color=color.red)
+    up_line.set_xy2(h_bi, swHi_arr_highs.first())
+
+// Updating the lines
+if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == 1
+    if swHi_arr_highs.size() > swHi_arr_highs.size()[1]
+        up_line.set_xy2(bar_index, swHi_arr_highs.first())
+
+if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == -1
+    if swLow_arr_highs.size() > swLow_arr_highs.size()[1]
+        dw_line.set_xy2(bar_index, swLow_arr_lows.first())
+
+// Intermediate Trend Detector
+if im_tops.size() > 0 and im_dir == 1 and sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1
+    if swHi_arr_highs.first() < im_tops.first()
+        im_dir := -1
+        if sh_im
+            label.new(h_bi, swHi_arr_highs.first(), color=color.rgb(255, 82, 82, 70), style=label.style_label_down)
+
+if im_bot.size() > 0 and im_dir == -1 and sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1
+    if swLow_arr_lows.first() > im_bot.first()
+        im_dir := 1
+        if sh_im
+            label.new(l_bi, swLow_arr_lows.first(), color=color.rgb(76, 175, 79, 70), style=label.style_label_up)
+
+if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
+    im_bot.unshift(swLow_arr_lows.first())
+
+if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1 and swHi_arr_highs.size() > 0
+    im_tops.unshift(swHi_arr_highs.first())
 
 //======================================================================
 // SECTION 6 — ALERTS
