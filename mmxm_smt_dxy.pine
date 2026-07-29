@@ -1354,7 +1354,7 @@ if showSwingLbl and not na(pvtLo)
 
 if bullShift and not na(fibAnchorHigh)
     line.new(bar_index - pivotLen * 2, fibAnchorHigh, bar_index, fibAnchorHigh,
-         color = color.new(bullCol, 30), width = 2, style = bosStyle)
+         color = color.new(bullCol, 30), width = 4, style = bosStyle)
     label.new(bar_index - pivotLen, fibAnchorHigh,
          text      = "HH ▲",
          style     = label.style_label_down,
@@ -1364,7 +1364,7 @@ if bullShift and not na(fibAnchorHigh)
 
 if bearShift and not na(fibAnchorLow)
     line.new(bar_index - pivotLen * 2, fibAnchorLow, bar_index, fibAnchorLow,
-         color = color.new(bearCol, 30), width = 2, style = bosStyle)
+         color = color.new(bearCol, 30), width = 4, style = bosStyle)
     label.new(bar_index - pivotLen, fibAnchorLow,
          text      = "LL ▼",
          style     = label.style_label_up,
@@ -1595,8 +1595,8 @@ plot(dcShowMid ? dcBasis : na, 'Donchian Mid', dcColorMid, dcMidLineWidth, style
 //----------------------------------------------------------------------
 // 5o. EMA 5 High
 //----------------------------------------------------------------------
-plot(ta.ema(high, 5), 'EMA 5 High', color.green, 2)
-plot(ta.ema(low, 5), 'EMA 5 Low', color.red, 2)
+plot(ta.ema(high, 5), 'EMA 5 High', color.green, 4)
+plot(ta.ema(low, 5), 'EMA 5 Low', color.red, 4)
 
 //----------------------------------------------------------------------
 // 5n. Larry Williams — Market Structure
@@ -1643,11 +1643,11 @@ if swHi_arr_highs.size() > 0 and sw_dir == -1 and sw_dir_ser == -1
 
 // Drawing lines on trend change
 if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
-    up_line := line.new(l_bi, swLow_arr_lows.first(), bar_index, swHi_arr_highs.first(), color=color.green)
+    up_line := line.new(l_bi, swLow_arr_lows.first(), bar_index, swHi_arr_highs.first(), color=color.green, width=3)
     dw_line.set_xy2(l_bi, swLow_arr_lows.first())
 
 if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1 and swLow_arr_lows.size() > 0
-    dw_line := line.new(h_bi, swHi_arr_highs.first(), bar_index, swLow_arr_lows.first(), color=color.red)
+    dw_line := line.new(h_bi, swHi_arr_highs.first(), bar_index, swLow_arr_lows.first(), color=color.red, width=3)
     up_line.set_xy2(h_bi, swHi_arr_highs.first())
 
 // Updating the lines
