@@ -143,11 +143,11 @@ int OnCalculate(const int rates_total,
             ObjectDelete(0, "LW_UP");
             ObjectCreate(0, "LW_UP", OBJ_TREND, 0, lTime, ArrFirst(swLowLows), ti, ArrFirst(swHiHighs));
             ObjectSetInteger(0, "LW_UP", OBJPROP_COLOR, clrGreen);
-            ObjectSetInteger(0, "LW_UP", OBJPROP_WIDTH, 1);
-            ObjectSetInteger(0, "LW_UP", OBJPROP_RAY_RIGHT, false);
+            ObjectSetInteger(0, "LW_UP", OBJPROP_WIDTH, 2);
+            ObjectSetInteger(0, "LW_UP", OBJPROP_RAY_RIGHT, true);
 
-            ObjectSetDouble(0, "LW_DN", OBJPROP_PRICE2, ArrFirst(swLowLows));
-            ObjectSetInteger(0, "LW_DN", OBJPROP_TIME2, lTime);
+            ObjectSetDouble(0, "LW_DN", OBJPROP_PRICE, 1, ArrFirst(swLowLows));
+            ObjectSetInteger(0, "LW_DN", OBJPROP_TIME, 1, lTime);
         }
 
         //--- Draw down line (up -> down trend change)
@@ -156,25 +156,25 @@ int OnCalculate(const int rates_total,
             ObjectDelete(0, "LW_DN");
             ObjectCreate(0, "LW_DN", OBJ_TREND, 0, hTime, ArrFirst(swHiHighs), ti, ArrFirst(swLowLows));
             ObjectSetInteger(0, "LW_DN", OBJPROP_COLOR, clrRed);
-            ObjectSetInteger(0, "LW_DN", OBJPROP_WIDTH, 1);
-            ObjectSetInteger(0, "LW_DN", OBJPROP_RAY_RIGHT, false);
+            ObjectSetInteger(0, "LW_DN", OBJPROP_WIDTH, 2);
+            ObjectSetInteger(0, "LW_DN", OBJPROP_RAY_RIGHT, true);
 
-            ObjectSetDouble(0, "LW_UP", OBJPROP_PRICE2, ArrFirst(swHiHighs));
-            ObjectSetInteger(0, "LW_UP", OBJPROP_TIME2, hTime);
+            ObjectSetDouble(0, "LW_UP", OBJPROP_PRICE, 1, ArrFirst(swHiHighs));
+            ObjectSetInteger(0, "LW_UP", OBJPROP_TIME, 1, hTime);
         }
 
         //--- Extend up line
         if(swDir == 1 && swDirPrev == 1 && ArraySize(swHiHighs) > prevHiSize)
         {
-            ObjectSetDouble(0, "LW_UP", OBJPROP_PRICE2, ArrFirst(swHiHighs));
-            ObjectSetInteger(0, "LW_UP", OBJPROP_TIME2, ti);
+            ObjectSetDouble(0, "LW_UP", OBJPROP_PRICE, 1, ArrFirst(swHiHighs));
+            ObjectSetInteger(0, "LW_UP", OBJPROP_TIME, 1, ti);
         }
 
         //--- Extend down line
         if(swDir == -1 && swDirPrev == -1 && ArraySize(swLowHighs) > prevLowSize)
         {
-            ObjectSetDouble(0, "LW_DN", OBJPROP_PRICE2, ArrFirst(swLowLows));
-            ObjectSetInteger(0, "LW_DN", OBJPROP_TIME2, ti);
+            ObjectSetDouble(0, "LW_DN", OBJPROP_PRICE, 1, ArrFirst(swLowLows));
+            ObjectSetInteger(0, "LW_DN", OBJPROP_TIME, 1, ti);
         }
 
         prevHiSize = ArraySize(swHiHighs);
