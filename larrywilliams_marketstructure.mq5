@@ -86,7 +86,6 @@ int OnCalculate(const int rates_total,
     {
         ArrUnshift(swHiHighs, high[0]);
         ArrUnshift(swLowHighs, high[0]);
-        ArrUnshift(swLowLows, high[0]);
         hTime = time[0];
         lTime = time[0];
         prevHiSize = 1;
@@ -130,7 +129,7 @@ int OnCalculate(const int rates_total,
         }
 
         //--- Trend change: down -> up
-        if(ArraySize(swLowHighs) > 0 && swDir == -1 && hi > ArrFirst(swLowHighs))
+        if(ArraySize(swHiHighs) > 0 && swDir == -1 && swDirPrev == -1 && hi > ArrFirst(swLowHighs))
         {
             swDir = 1;
             ArrUnshift(swHiHighs, hi);
