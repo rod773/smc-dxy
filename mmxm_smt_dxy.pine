@@ -1601,19 +1601,7 @@ plot(ta.ema(low, 5), 'EMA 5 Low', #ff3d00, 4)
 //----------------------------------------------------------------------
 // 5n. Larry Williams — Market Structure
 //----------------------------------------------------------------------
-sw_dir_ser = sw_dir
-sw_dir_ult_ser = sw_dir
-
-// Init
-if swHi_arr_highs.size() == 0
-    swHi_arr_highs.unshift(high)
-    swLow_arr_highs.unshift(high)
-
-if swLow_arr_highs.size() == 0
-    swLow_arr_highs.unshift(high)
-    swLow_arr_lows.unshift(high)
-
-// Add values
+//Add values
 if swHi_arr_highs.size() > 0
     if high > swHi_arr_highs.first() and sw_dir == 1
         swHi_arr_highs.unshift(high)
@@ -1626,8 +1614,9 @@ if swLow_arr_lows.size() > 0
         swLow_arr_lows.unshift(low)
         l_bi := bar_index
 
-// Trend Change code
-if swHi_arr_lows.size() > 0 and sw_dir == 1
+//Trend Change code
+sw_dir_ser = sw_dir
+if swHi_arr_lows.size() > 0 and sw_dir == 1 
     if low < swHi_arr_lows.first()
         sw_dir := -1
         swLow_arr_highs.unshift(high)
@@ -1641,36 +1630,47 @@ if swHi_arr_highs.size() > 0 and sw_dir == -1 and sw_dir_ser == -1
         swHi_arr_lows.unshift(low)
         h_bi := bar_index
 
-// Drawing lines on trend change
+//Init
+if swHi_arr_highs.size() == 0
+    swHi_arr_highs.unshift(high)
+    swLow_arr_highs.unshift(high)
+
+if swLow_arr_highs.size() == 0
+    swLow_arr_highs.unshift(high)
+    swLow_arr_lows.unshift(high)
+
+sw_dir_ult_ser = sw_dir
+
+//Drawing lines on trend change
 if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
-    up_line := line.new(l_bi, swLow_arr_lows.first(), bar_index, swHi_arr_highs.first(), color=#00e676, width=3)
+    up_line := line.new(l_bi , swLow_arr_lows.first(), bar_index, swHi_arr_highs.first(), color=color.green, width=3)
     dw_line.set_xy2(l_bi, swLow_arr_lows.first())
 
 if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1 and swLow_arr_lows.size() > 0
-    dw_line := line.new(h_bi, swHi_arr_highs.first(), bar_index, swLow_arr_lows.first(), color=#ff3d00, width=3)
+    dw_line := line.new(h_bi , swHi_arr_highs.first(), bar_index, swLow_arr_lows.first(), color=color.red, width=3)
     up_line.set_xy2(h_bi, swHi_arr_highs.first())
 
-// Updating the lines
-if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == 1
+//Updating the lines
+if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == 1 
     if swHi_arr_highs.size() > swHi_arr_highs.size()[1]
         up_line.set_xy2(bar_index, swHi_arr_highs.first())
 
-if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == -1
+if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == -1 
     if swLow_arr_highs.size() > swLow_arr_highs.size()[1]
         dw_line.set_xy2(bar_index, swLow_arr_lows.first())
 
-// Intermediate Trend Detector
+//Intermediate Trend Detector
 if im_tops.size() > 0 and im_dir == 1 and sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1
     if swHi_arr_highs.first() < im_tops.first()
         im_dir := -1
         if sh_im
-            label.new(h_bi, swHi_arr_highs.first(), color=color.rgb(255, 82, 82, 70), style=label.style_label_down)
+            label.new(h_bi, swHi_arr_highs.first(), color = color.rgb(255, 82, 82, 70), style=label.style_label_down)
 
 if im_bot.size() > 0 and im_dir == -1 and sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1
     if swLow_arr_lows.first() > im_bot.first()
         im_dir := 1
         if sh_im
-            label.new(l_bi, swLow_arr_lows.first(), color=color.rgb(76, 175, 79, 70), style=label.style_label_up)
+            label.new(l_bi, swLow_arr_lows.first(), color = color.rgb(76, 175, 79, 70), style=label.style_label_up)
 
 if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
     im_bot.unshift(swLow_arr_lows.first())
