@@ -248,7 +248,7 @@ lonSess    = input.session('0800-1700', 'London session (local time)', group = "
 lonColor   = input.color(color.blue, 'London color', group = "Sessions")
 nySess     = input.session('1400-2200', 'New York session (local time)', group = "Sessions")
 nyColor    = input.color(color.purple, 'New York color', group = "Sessions")
-boxTransp  = input.int(85, 'Box transparency (0-100)', group = "Sessions")
+boxTransp  = input.int(95, 'Box transparency (0-100)', group = "Sessions")
 lineStyle  = input.string('solid', 'Vertical line style', options = ['solid', 'dashed', 'dotted'], group = "Sessions")
 tzChoice   = input.string('Europe/Madrid', 'Timezone', options = ['Europe/Madrid', 'Europe/London', 'Asia/Tokyo', 'America/New_York'], group = "Sessions")
 
