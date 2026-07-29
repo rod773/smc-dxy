@@ -1596,7 +1596,7 @@ plot(dcShowMid ? dcBasis : na, 'Donchian Mid', dcColorMid, dcMidLineWidth, style
 // 5o. EMA 5 High
 //----------------------------------------------------------------------
 plot(ta.ema(high, 5), 'EMA 5 High', #00e676, 4)
-plot(ta.ema(low, 5), 'EMA 5 Low', #ff1744, 4)
+plot(ta.ema(low, 5), 'EMA 5 Low', #ff3d00, 4)
 
 //----------------------------------------------------------------------
 // 5n. Larry Williams — Market Structure
@@ -1647,7 +1647,7 @@ if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
     dw_line.set_xy2(l_bi, swLow_arr_lows.first())
 
 if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1 and swLow_arr_lows.size() > 0
-    dw_line := line.new(h_bi, swHi_arr_highs.first(), bar_index, swLow_arr_lows.first(), color=#ff1744, width=3)
+    dw_line := line.new(h_bi, swHi_arr_highs.first(), bar_index, swLow_arr_lows.first(), color=#ff3d00, width=3)
     up_line.set_xy2(h_bi, swHi_arr_highs.first())
 
 // Updating the lines
