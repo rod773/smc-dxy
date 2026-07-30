@@ -253,18 +253,6 @@ lineStyle  = input.string('solid', 'Vertical line style', options = ['solid', 'd
 tzChoice   = input.string('Europe/Madrid', 'Timezone', options = ['Europe/Madrid', 'Europe/London', 'Asia/Tokyo', 'America/New_York'], group = "Sessions")
 
 //----------------------------------------------------------------------
-// 1g. Setup 9.1 (Larry Williams) + EMA 50
-//----------------------------------------------------------------------
-group1  = "MA 1 (9.1 Signal)"
-typeMa1 = input.string("EMA", "MA 1 Type", options=["EMA", "SMA"], group=group1)
-len     = input.int(20, "MA 1 Length", minval=1, group=group1)
-
-group2  = "MA 2 (Filter)"
-showMa2 = input.bool(true, "Show MA 2", group=group2)
-typeMa2 = input.string("EMA", "MA 2 Type", options=["EMA", "SMA"], group=group2)
-len2    = input.int(50, "MA 2 Length", minval=1, group=group2)
-
-//----------------------------------------------------------------------
 // 1h. Combined — Donchian Channels
 //----------------------------------------------------------------------
 dcLength1       = input.int(15, 'Upper Channel Length', minval = 1, group = 'Donchian Channels')
@@ -1549,51 +1537,6 @@ if showBoxes and exited(nyIn) and not na(nyBox)
     nyBox   := na
 
 //----------------------------------------------------------------------
-// 5m. Setup 9.1 (Larry Williams) + EMA 50
-//----------------------------------------------------------------------
-ma1     = get_ma(typeMa1, close, len)
-ma2     = get_ma(typeMa2, close, len2)
-ma1up   = ma1 > ma1[1]
-ma1down = ma1 < ma1[1]
-maColor = ma1up ? color.new(#1cff78, 0) : ma1down ? color.new(#FF0000, 0) : color.new(#ffeb3b, 0)
-
-plot(ma1, "MA 1 (20)", linewidth=2, color=maColor)
-plot(showMa2 ? ma2 : na, "MA 2 (50)", linewidth=2, color=color.new(#FFFFFF, 0))
-
-buySignal  = ma1up and not ma1up[1]
-sellSignal = ma1down and not ma1down[1]
-
-var float buyTrigger  = na
-var float buyStop     = na
-var float sellTrigger = na
-var float sellStop    = na
-
-if buySignal
-    buyTrigger := high
-    buyStop    := low
-else if not ma1up
-    buyTrigger := na
-    buyStop    := na
-
-if sellSignal
-    sellTrigger := low
-    sellStop    := high
-else if not ma1down
-    sellTrigger := na
-    sellStop    := na
-
-barcolor(buySignal  and close > open ? color.new(#1cff78, 0) : na)
-barcolor(sellSignal and close < open ? color.new(#FF0000, 0) : na)
-
-plotshape(buySignal,  "BUY 20",  shape.arrowup,   location.belowbar, color.new(#1cff78, 0), size=size.small, text="BUY 20",  textcolor=color.new(#1cff78, 0))
-plotshape(sellSignal, "SELL 20", shape.arrowdown, location.abovebar, color.new(#FF0000, 0), size=size.small, text="SELL 20", textcolor=color.new(#FF0000, 0))
-
-plot(not na(buyTrigger)  ? buyTrigger  : na, "Buy Entry", color.new(#1cff78, 0), style=plot.style_linebr, linewidth=1)
-plot(not na(buyStop)     ? buyStop     : na, "Buy Stop",  color.new(#1cff78, 60), style=plot.style_linebr, linewidth=1)
-plot(not na(sellTrigger) ? sellTrigger : na, "Sell Entry", color.new(#FF0000, 0), style=plot.style_linebr, linewidth=1)
-plot(not na(sellStop)    ? sellStop    : na, "Sell Stop",  color.new(#FF0000, 60), style=plot.style_linebr, linewidth=1)
-
-//----------------------------------------------------------------------
 // 5n. Combined — Donchian Channels
 //----------------------------------------------------------------------
 dcUpper = ta.highest(dcLength1)
@@ -1603,12 +1546,6 @@ dcBasis = math.avg(dcUpper, dcLower)
 plot(dcShowLower ? dcLower : na, 'Donchian Lower', dcColorLower, dcLineWidth, style = plot.style_line, offset = dcOffset)
 plot(dcShowUpper ? dcUpper : na, 'Donchian Upper', dcColorUpper, dcLineWidth, style = plot.style_line, offset = dcOffset)
 plot(dcShowMid ? dcBasis : na, 'Donchian Mid', dcColorMid, dcMidLineWidth, style = plot.style_line, offset = dcOffset)
-
-//----------------------------------------------------------------------
-// 5o. EMA 5 High
-//----------------------------------------------------------------------
-plot(ta.ema(high, 5), 'EMA 5 High', #00e676, 4)
-plot(ta.ema(low, 5), 'EMA 5 Low', #ff3d00, 4)
 
 //----------------------------------------------------------------------
 // 5n. Larry Williams — Market Structure
@@ -1723,6 +1660,4 @@ Alert.AlertSender(MitigationAlert_Bear, MMXM_Bear, AlertName, 'Bearish', 'Order 
 alertcondition(smtBearish, title="Bearish SMT Divergence", message="Bearish SMT divergence detected on {{ticker}} vs DXY")
 alertcondition(smtBullish, title="Bullish SMT Divergence", message="Bullish SMT divergence detected on {{ticker}} vs DXY")
 
-// 6c. Setup 9.1 Alerts
-alertcondition(buySignal,  title="EMA 20 Buy Alert",  message="EMA 20 Setup - BUY Signal")
-alertcondition(sellSignal, title="EMA 20 Sell Alert", message="EMA 20 Setup - SELL Signal")
+
