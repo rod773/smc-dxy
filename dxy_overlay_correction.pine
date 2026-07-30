@@ -1,0 +1,25 @@
+//@version=5
+indicator(title="DXY Overlay", overlay=true)
+
+inpInvert  = input.bool(true, "Invert Correlation")
+dxySymbol  = input.string("DX1!", "DXY Symbol")
+
+dxyClose = request.security(dxySymbol, timeframe.period, close)
+
+var float dxyLowest  = na
+var float dxyHighest = na
+if not na(dxyClose)
+    dxyLowest  := na(dxyLowest)  ? dxyClose : math.min(dxyLowest, dxyClose)
+    dxyHighest := na(dxyHighest) ? dxyClose : math.max(dxyHighest, dxyClose)
+
+dxyRange = dxyHighest - dxyLowest
+dxyNorm  = dxyRange > 0 ? (dxyClose - dxyLowest) / dxyRange : 0.5
+
+mainHigh        = ta.highest(high, 20)
+mainLow         = ta.lowest(low, 20)
+priceRange      = mainHigh - mainLow
+effectiveRange  = priceRange > 0 ? priceRange : syminfo.mintick * 100
+
+overlayVal = inpInvert ? mainHigh - (dxyNorm * effectiveRange) : mainLow + (dxyNorm * effectiveRange)
+
+plot(overlayVal, "USDX", #1E90FF, 2)

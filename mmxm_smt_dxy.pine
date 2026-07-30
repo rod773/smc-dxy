@@ -280,6 +280,14 @@ dcLineWidth     = input.int(3, 'Channel Line Width', minval = 1, maxval = 10, gr
 dcMidLineWidth  = input.int(1, 'Mid Line Width', minval = 1, maxval = 10, group = 'Donchian Channels')
 
 //----------------------------------------------------------------------
+// 1i. DXY Overlay Correction
+//----------------------------------------------------------------------
+dxyOverlayShow = input.bool(true, "Show DXY Overlay", group = "DXY Overlay")
+dxyOverlayInv  = input.bool(true, "Invert Correlation", group = "DXY Overlay")
+dxyOverlaySym  = input.string("DX1!", "DXY Symbol", group = "DXY Overlay")
+dxyOverlayLen  = input.int(20, "Lookback Period", group = "DXY Overlay")
+
+//----------------------------------------------------------------------
 // 1h. Larry Williams — Market Structure
 //----------------------------------------------------------------------
 sh_im = input.bool(true, "Show Intermediate Trend Change Icons")
@@ -376,6 +384,10 @@ var float smtPrevDL = na
 var int   smtPrevDHB = na
 var int   smtPrevDLB = na
 var table smtTbl     = na
+
+//--- DXY Overlay variables
+var float dxyOLowest  = na
+var float dxyOHighest = na
 
 //--- Larry Williams Market Structure variables
 var array<float> swHi_arr_highs = array.new<float>()
@@ -1677,6 +1689,27 @@ if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
 
 if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1 and swHi_arr_highs.size() > 0
     im_tops.unshift(swHi_arr_highs.first())
+
+//----------------------------------------------------------------------
+// 5p. DXY Overlay Correction
+//----------------------------------------------------------------------
+dxyOClose = request.security(dxyOverlaySym, timeframe.period, close)
+
+if not na(dxyOClose)
+    dxyOLowest  := na(dxyOLowest)  ? dxyOClose : math.min(dxyOLowest, dxyOClose)
+    dxyOHighest := na(dxyOHighest) ? dxyOClose : math.max(dxyOHighest, dxyOClose)
+
+dxyORange = dxyOHighest - dxyOLowest
+dxyONorm  = dxyORange > 0 ? (dxyOClose - dxyOLowest) / dxyORange : 0.5
+
+dxyOMainHigh  = ta.highest(high, dxyOverlayLen)
+dxyOMainLow   = ta.lowest(low, dxyOverlayLen)
+dxyOPriceRange = dxyOMainHigh - dxyOMainLow
+dxyOEffectiveRange = dxyOPriceRange > 0 ? dxyOPriceRange : syminfo.mintick * 100
+
+dxyOOverlayVal = dxyOverlayInv ? dxyOMainHigh - (dxyONorm * dxyOEffectiveRange) : dxyOMainLow + (dxyONorm * dxyOEffectiveRange)
+
+plot(dxyOverlayShow ? dxyOOverlayVal : na, "USDX", #1E90FF, 2)
 
 //======================================================================
 // SECTION 6 — ALERTS
