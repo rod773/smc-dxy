@@ -276,6 +276,14 @@ dxyOverlaySym  = input.string("DX1!", "DXY Symbol", group = "DXY Overlay")
 dxyOverlayLen  = input.int(20, "Lookback Period", group = "DXY Overlay")
 
 //----------------------------------------------------------------------
+// 1j. Williams Fractals
+//----------------------------------------------------------------------
+wfShow      = input.bool(true, 'Show Williams Fractals', group = 'Williams Fractals')
+wfPeriods   = input.int(2, 'Fractal Periods', minval = 2, group = 'Williams Fractals')
+wfBullColor = input.color(#009688, 'Bullish Fractal Color', group = 'Williams Fractals')
+wfBearColor = input.color(#F44336, 'Bearish Fractal Color', group = 'Williams Fractals')
+
+//----------------------------------------------------------------------
 // 1h. Larry Williams — Market Structure
 //----------------------------------------------------------------------
 sh_im = input.bool(true, "Show Intermediate Trend Change Icons")
@@ -1546,6 +1554,50 @@ dcBasis = math.avg(dcUpper, dcLower)
 plot(dcShowLower ? dcLower : na, 'Donchian Lower', dcColorLower, dcLineWidth, style = plot.style_line, offset = dcOffset)
 plot(dcShowUpper ? dcUpper : na, 'Donchian Upper', dcColorUpper, dcLineWidth, style = plot.style_line, offset = dcOffset)
 plot(dcShowMid ? dcBasis : na, 'Donchian Mid', dcColorMid, dcMidLineWidth, style = plot.style_line, offset = dcOffset)
+
+//----------------------------------------------------------------------
+// 5m. Williams Fractals
+//----------------------------------------------------------------------
+wfN = wfPeriods
+
+bool upflagDownFrontier = true
+bool upflagUpFrontier0 = true
+bool upflagUpFrontier1 = true
+bool upflagUpFrontier2 = true
+bool upflagUpFrontier3 = true
+bool upflagUpFrontier4 = true
+
+for i = 1 to wfN
+    upflagDownFrontier := upflagDownFrontier and (high[wfN-i] < high[wfN])
+    upflagUpFrontier0 := upflagUpFrontier0 and (high[wfN+i] < high[wfN])
+    upflagUpFrontier1 := upflagUpFrontier1 and (high[wfN+1] <= high[wfN] and high[wfN+i + 1] < high[wfN])
+    upflagUpFrontier2 := upflagUpFrontier2 and (high[wfN+1] <= high[wfN] and high[wfN+2] <= high[wfN] and high[wfN+i + 2] < high[wfN])
+    upflagUpFrontier3 := upflagUpFrontier3 and (high[wfN+1] <= high[wfN] and high[wfN+2] <= high[wfN] and high[wfN+3] <= high[wfN] and high[wfN+i + 3] < high[wfN])
+    upflagUpFrontier4 := upflagUpFrontier4 and (high[wfN+1] <= high[wfN] and high[wfN+2] <= high[wfN] and high[wfN+3] <= high[wfN] and high[wfN+4] <= high[wfN] and high[wfN+i + 4] < high[wfN])
+flagUpFrontier = upflagUpFrontier0 or upflagUpFrontier1 or upflagUpFrontier2 or upflagUpFrontier3 or upflagUpFrontier4
+
+upFractal = (upflagDownFrontier and flagUpFrontier)
+
+bool downflagDownFrontier = true
+bool downflagUpFrontier0 = true
+bool downflagUpFrontier1 = true
+bool downflagUpFrontier2 = true
+bool downflagUpFrontier3 = true
+bool downflagUpFrontier4 = true
+
+for i = 1 to wfN
+    downflagDownFrontier := downflagDownFrontier and (low[wfN-i] > low[wfN])
+    downflagUpFrontier0 := downflagUpFrontier0 and (low[wfN+i] > low[wfN])
+    downflagUpFrontier1 := downflagUpFrontier1 and (low[wfN+1] >= low[wfN] and low[wfN+i + 1] > low[wfN])
+    downflagUpFrontier2 := downflagUpFrontier2 and (low[wfN+1] >= low[wfN] and low[wfN+2] >= low[wfN] and low[wfN+i + 2] > low[wfN])
+    downflagUpFrontier3 := downflagUpFrontier3 and (low[wfN+1] >= low[wfN] and low[wfN+2] >= low[wfN] and low[wfN+3] >= low[wfN] and low[wfN+i + 3] > low[wfN])
+    downflagUpFrontier4 := downflagUpFrontier4 and (low[wfN+1] >= low[wfN] and low[wfN+2] >= low[wfN] and low[wfN+3] >= low[wfN] and low[wfN+4] >= low[wfN] and low[wfN+i + 4] > low[wfN])
+flagDownFrontier = downflagUpFrontier0 or downflagUpFrontier1 or downflagUpFrontier2 or downflagUpFrontier3 or downflagUpFrontier4
+
+downFractal = (downflagDownFrontier and flagDownFrontier)
+
+plotshape(wfShow and downFractal, style=shape.triangledown, location=location.belowbar, offset=-wfN, color=wfBearColor, size=size.small, title='Williams Bearish Fractal')
+plotshape(wfShow and upFractal,   style=shape.triangleup,   location=location.abovebar, offset=-wfN, color=wfBullColor, size=size.small, title='Williams Bullish Fractal')
 
 //----------------------------------------------------------------------
 // 5n. Larry Williams — Market Structure
