@@ -1,0 +1,88 @@
+//@version=5
+indicator(
+     title="Will Val SXY"
+     , shorttitle="Will Val SXY"
+     , format=format.percent
+     , precision=1
+     , timeframe=""
+     , timeframe_gaps=true
+     )
+
+// ─── Based on Larry Williams' valuation method (1998) ──────────────────────
+// The formula adapts the WillVal concept to any data series:
+//
+//   1. Pick a source (default: close of current chart)
+//   2. Short WMA  (default 2)
+//   3. Long WMA   (default 22)
+//   4. Diff = ShortMA − LongMA
+//   5. %-rank of Diff within a 3-year rolling window
+//
+//   High % → overvalued / extended
+//   Low  % → undervalued / compressed
+// ───────────────────────────────────────────────────────────────────────────
+
+// ─── Inputs ────────────────────────────────────────────────────────────────
+goldTicker = input.symbol("XAUUSD", "Gold Ticker")
+sxyTicker = input.symbol("TVC:SXY", "SXY Ticker")
+chartSrc  = close
+
+goldClose = request.security(goldTicker, timeframe.period, close)
+sxyClose = request.security(sxyTicker, timeframe.period, close)
+spread = goldClose - chartSrc
+
+shortLen = input.int(2,   "Short MA Period", minval=1)
+longLen  = input.int(22,  "Long MA Period",  minval=2)
+lookback = input.int(3,   "Lookback Range (years)", minval=1)
+
+obLevel = input.int(80, "Overbought Level", minval=1)
+osLevel = input.int(20, "Oversold Level",   minval=1)
+
+showWillR = input.bool(true, "Show Williams %R")
+willRPer  = input.int(14, "Williams %R Period", minval=1)
+
+// ─── WMA Calculation ──────────────────────────────────────────────────────
+shortMA = ta.wma(spread, shortLen)
+longMA  = ta.wma(spread, longLen)
+
+diff = shortMA - longMA
+
+// ─── %-Rank within lookback window ────────────────────────────────────────
+bars = lookback * 52  // approximate weekly bars
+
+hi = ta.highest(diff, bars)
+lo = ta.lowest(diff, bars)
+rng = hi - lo
+
+pct = rng > 0 ? (diff - lo) / rng * 100 : 50
+
+// ─── SXY %-Rank (same methodology) ──────────────────────────────────────
+shortMA_s = ta.wma(sxyClose, shortLen)
+longMA_s  = ta.wma(sxyClose, longLen)
+diff_s    = shortMA_s - longMA_s
+
+hi_s = ta.highest(diff_s, bars)
+lo_s = ta.lowest(diff_s, bars)
+rng_s = hi_s - lo_s
+
+sxyPct = rng_s > 0 ? (diff_s - lo_s) / rng_s * 100 : 50
+
+// ─── Visuals ───────────────────────────────────────────────────────────────
+hline(50,  "Midline",         color=color.gray,   linestyle=hline.style_dotted)
+hline(obLevel, "Overbought",  color=color.maroon, linestyle=hline.style_dashed)
+hline(osLevel, "Oversold",    color=color.green,  linestyle=hline.style_dashed)
+
+color pColor = pct > obLevel ? color.maroon : pct < osLevel ? color.green : color.blue
+plot(pct, "%-Rank", pColor, linewidth=2)
+plot(sxyPct, "SXY %-Rank", color.orange, linewidth=1)
+
+fill(plot(obLevel, display=display.none), plot(100, display=display.none),
+  color.new(color.maroon, 85), title="Overbought Zone")
+fill(plot(osLevel, display=display.none), plot(0, display=display.none),
+  color.new(color.green, 85), title="Oversold Zone")
+
+// ─── Williams %R (shifted to 0-100 to match Will Val scale) ─────────────
+hh  = ta.highest(high, willRPer)
+ll  = ta.lowest(low, willRPer)
+willR = 100 + (-100 * (hh - close) / (hh - ll))
+
+plot(showWillR ? willR : na, "WPR", color.purple, linewidth=1)
