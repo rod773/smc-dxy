@@ -1,0 +1,1715 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © TFlab
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © LuxAlgo
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ChartPrime
+
+//@version=6
+indicator("MMXM ICT + SMT SXY [Smart Money Combined]", "MMXM+SMT", overlay = true, max_bars_back = 5000, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_polylines_count = 100)
+
+//======================================================================
+// IMPORTS
+//======================================================================
+import TFlab/OrderBlockRefiner_TradingFinder/2 as Refiner
+import TFlab/OrderBlockDrawing_TradingFinder/4 as Drawing
+import TFlab/FVGDetectorLibrary/3 as FVG
+import TFlab/AlertSenderLibrary_TradingFinder/1 as Alert
+
+//======================================================================
+// SECTION 1 — INPUTS
+//======================================================================
+
+//----------------------------------------------------------------------
+// 1a. MMMM ICT — Logical Settings
+//----------------------------------------------------------------------
+TF = input.timeframe('60', 'Higher TimeFrame PD Array', group = 'MMXM Logical')
+SwingPeriod = input.int(50, 'PD Array Period', minval = 1, group = 'MMXM Logical')
+ATR_Coefficient = input.float(1, 'ATR Coefficient Threshold', minval = 0, group = 'MMXM Logical')
+MaxSwingBack_Method = input.string('All', 'Max Swing Back Method', ['All', 'Custom'], group = 'MMXM Logical')
+MaxSwingBack = input.int(100, 'Max Swing Back', minval = 1, group = 'MMXM Logical')
+Sym = input.symbol('XAUUSD', 'Second Symbol for SMT', group = 'MMXM Logical')
+n_mxm = input.int(4, 'SMT Fractal Periods', minval = 1, group = 'MMXM Logical')
+FVG_Length = input.int(150, 'FVG Validity Period', minval = 1, group = 'MMXM Logical')
+MSS_Length = input.int(150, 'MSS Validity Period', minval = 1, group = 'MMXM Logical')
+
+// FVG Filter
+PFVGFilter = input.bool(false, 'FVG Filter', group = 'MMXM FVG')
+PFVGFilterType = input.string('Defensive', '', ['Very Aggressive', 'Aggressive', 'Defensive', 'Very Defensive'],
+ group = 'MMXM FVG', inline = 'MMXM FVG Filter',
+ tooltip = 'If it is "On", this filter will filter "FVGs" based on the width of the Zone. From "Very Aggressive" to "Very Defensive" the width of the "FVG" decreases.')
+MLFVG = input.string('Proximal', 'Mitigation Level FVG', ['Proximal', '50 % OB', 'Distal'],
+ tooltip = 'Using this entry, you can determine which level the price reacts to in a FVG.', group = 'MMXM FVG')
+
+// Alerts
+AlertName = input.string('MMXM ICT [TradingFinder]', 'Alert Name', group = 'MMXM Alert')
+Frequncy = input.string('Once Per Bar', 'Message Frequency', ['All', 'Once Per Bar', 'Per Bar Close'],
+ 'The triggering frequency. Possible values are: All (all function calls trigger the alert), Once Per Bar (the first function call during the bar triggers the alert), Per Bar Close (the function call triggers the alert only when it occurs during the last script iteration of the real-time bar, when it closes). The default is alert.freq_once_per_bar.)', group = 'MMXM Alert')
+UTC = input.string('UTC', 'Show Alert time by Time Zone', group = 'MMXM Alert')
+MMXM_Bull = input.string('On', 'Alert Demand Mitigation', ['On', 'Off'], 'If you turn on the Alert, you can receive alerts and notifications after setting the "Alert".', group = 'MMXM Alert')
+MMXM_Bear = input.string('On', 'Alert Supply Mitigation', ['On', 'Off'], 'If you turn on the Alert, you can receive alerts and notifications after setting the "Alert".', group = 'MMXM Alert')
+
+// FVG Display
+DFVGShow  = input.bool(true, 'Demand FVG', inline = 'MMXM DFVG', group = 'MMXM Display')
+DFVGColor = input.color(#2195f36c, '', inline = 'MMXM DFVG', group = 'MMXM Display')
+SFVGShow  = input.bool(true, 'Supply FVG', inline = 'MMXM SFVG', group = 'MMXM Display')
+SFVGColor = input.color(#ff990070, '', inline = 'MMXM SFVG', group = 'MMXM Display')
+
+// SMT Divergence Display
+Bull_Line   = input.bool(true, 'Show SMT Div Line from Bottom')
+Bull_Label  = input.bool(false, 'Show SMT Div Label from Bottom')
+Bear_Line   = input.bool(true, 'Show SMT Div Line from Top')
+Bear_Label  = input.bool(false, 'Show SMT Div Label from Top')
+
+// HTF PD Array Display
+AShow = input.bool(true, 'Show All HTF LvL', group = 'MMXM Display')
+HShow = input.bool(true, 'Show High HTF LvL', group = 'MMXM Display', inline = 'MMXM H')
+LShow = input.bool(true, 'Show Low HTF LvL', group = 'MMXM Display', inline = 'MMXM L')
+HNColor = input.color(#570000, 'Name', group = 'MMXM Display', inline = 'MMXM H')
+LNColor = input.color(#003b05, 'Name', group = 'MMXM Display', inline = 'MMXM L')
+HLColor = input.color(#7e0000, 'Line', group = 'MMXM Display', inline = 'MMXM H')
+LLColor = input.color(#004600, 'Line', group = 'MMXM Display', inline = 'MMXM L')
+
+// MSS Display
+AShow_MSS = input.bool(true, 'Show All MSS', group = 'MMXM Display')
+HShow_MSS = input.bool(true, 'Show High MSS', group = 'MMXM Display', inline = 'MMXM HMSS')
+LShow_MSS = input.bool(true, 'Show Low MSS', group = 'MMXM Display', inline = 'MMXM LMSS')
+HNColor_MSS = input.color(#6d0101, 'Name', group = 'MMXM Display', inline = 'MMXM HMSS')
+LNColor_MSS = input.color(#014f07, 'Name', group = 'MMXM Display', inline = 'MMXM LMSS')
+HLColor_MSS = input.color(#b90000b8, 'Line', group = 'MMXM Display', inline = 'MMXM HMSS')
+LLColor_MSS = input.color(#069206a7, 'Line', group = 'MMXM Display', inline = 'MMXM LMSS')
+
+//----------------------------------------------------------------------
+// 1b. Combined — Liquidity Sentiment Profile
+//----------------------------------------------------------------------
+rpGR  = 'Liquidity Sentiment Profile'
+tfTP  = 'The indicator resolution is set by the input of the Anchor Period. If the Anchor Period is set to AUTO, then the increased resolution is determined by the following algorithm:\n\n' +
+          ' - for intraday resolutions up to 4 Hour, DAY (1D) is used\n - for intraday resolutions equal to 4 Hour, WEEK (1W) is used\n - for daily resolutions MONTH is used (1M)\n - for weekly resolution, 3-MONTH (3M) is used\n - for monthly resolution, 12-MONTH (12M) is used\n\n' +
+          'If the Anchor Period is set to Fixed Range then the period is defined in the \'Fixed Period\' option\n\n' +
+          'If the Anchor Period is set to Swing High or Swing Low then the length required to calculate Swing Levels is defined in the \'Swing Detection Length\' option\n\n' +
+          'Note : Difference between Session and Day\n - Day will take into account extended hours (if present on the chart), whereas\n - Session will assume only regular trading hours. Session is default value for AUTO Anchor Period'
+tfIN  = input.string('Fixed Range', 'Anchor Period', options=['Auto', 'Fixed Range', 'Swing High', 'Swing Low', 'Session', 'Day', 'Week', 'Month', 'Quarter', 'Year'], group = rpGR, tooltip = tfTP)
+tfOT  = tfIN == 'Session' or tfIN == 'Day' ? 'D' : tfIN == 'Week' ? 'W' : tfIN == 'Month' ? 'M' : tfIN == 'Quarter' ? '3M' : tfIN == 'Year' ? '12M' : timeframe.isintraday and timeframe.period != '240' ? 'D' : timeframe.period == '240' ? 'W' : timeframe.isdaily ? 'M' : timeframe.isweekly ? '3M' : '12M'
+drpTT = 'Applicable if the Anchor Period is set to \'Fixed Range\' then the period of the profile is defined with this option\n\npossible min value [10]'
+drpLN = input.int(360, 'Fixed Period', minval = 10, group = rpGR, tooltip = drpTT)
+ppTT  = 'Applicable if the Anchor Period is set to \'Swing High\' or \'Swing Low\' then the length required to detect the Swing Levels is defined with this option\n\npossible min value [1]'
+ppLen = input.int(47, "Swing Detection Length", minval = 1, group = rpGR, tooltip = ppTT)
+lpGR  = 'Liquidity Profile'
+vpTP  = 'In trading, liquidity refers to the availability of orders at specific price points in the market, allowing transactions to occur smoothly, and the profile displays total trading activity (common interest, both buying and selling trading activity) over a specified time period at specific price levels\n\n' +
+          ' - high volume node rows : high trading activity price levels - usually represents consolidation levels (value areas)\n' +
+          ' - average volume node rows : average trading activity price levels\n' +
+          ' - low volume node rows : low trading activity price levels - usually represents supply & demand levels or liquidity levels\n\n' +
+          'row lengths, indicates the amount of the traded activity'
+vpSH  = input.bool(true, 'Liquidity Profile', group = lpGR, tooltip = vpTP)
+vpHVC = input.color(color.new(#ff9800, 11), 'High Traded Nodes', inline='VP1', group = lpGR)
+vpHVT = input.int(53, 'Threshold %' , minval = 47, maxval = 99 , step = 1, inline='VP1', group = lpGR, tooltip = 'possible values [47-99]') / 100
+vpAVC = input.color(color.new(#5d606b, 51), 'Average Traded Nodes', inline='VP3' , group = lpGR)
+vpLVC = input.color(color.new(#2962ff, 11), 'Low Traded Nodes', inline='VP2', group = lpGR)
+vpLVT = input.int(27, 'Threshold %' , minval = 10, maxval = 47 , step = 1, inline='VP2', group = lpGR, tooltip = 'possible values [10-47]') / 100
+spGR  = 'Sentiment Profile'
+spTP  = 'displays the sentiment, the dominat party over a specified time period at the specific price levels\n\n' +
+          ' - bullish node rows : buying trading activity is higher\n'  +
+          ' - barish node rows : selling trading activity is higher\n\n' +
+          'row lengths, indicates the strength of the buyers/sellers at the specific price levels'
+spSH  = input.bool(true, 'Sentiment Profile', group = spGR, tooltip = spTP)
+spBLC = input.color(color.new(#26a69a, 73), 'Bullish Nodes', inline='SP', group = spGR)
+spBRC = input.color(color.new(#ef5350, 73), 'Bearish Nodes', inline='SP', group = spGR)
+sdGR  = 'Buyside & Sellside Liquidity Zones'
+sdTP  = 'Typically refer to the resting orders in the market, such as limit orders, stop loss orders, and stop limit orders, which can be absorbed or targeted by banks or financial institutions. Those levels are also reffered as supply & demand levels in the market'
+sdSH  = input.bool(true, 'Buyside & Sellside Liquidity Zones', group = sdGR, tooltip = sdTP)
+sdTH  = input.int(13, 'Threshold %' , minval = 0, maxval = 31, group = sdGR, tooltip = 'possible threshold values [0-31]\n\nhigher values return wider areas') / 100
+sdCR  = input.color(color.new(#0094FF, 81), 'Buyside Liquidity Nodes', inline='low2', group = sdGR)
+sdCS  = input.color(color.new(#ec1313, 81), 'Sellside Liquidity Nodes', inline='low2', group = sdGR)
+othGR = 'Other Settings'
+pcTP  = 'displays the changes of the price levels with the highest traded activity'
+rpPC  = input.bool(false, 'Level of Significance', inline='PoC', group = othGR, tooltip = pcTP)
+rpPCC = input.color(color.new(#ff0000, 1), '', inline='PoC', group = othGR)
+rpPCW = input.int(2, '', inline='PoC', group = othGR)
+rpPL  = input.bool(false, 'Price Levels, Color', inline='BBe', group = othGR)
+rpPLC = input.color(color.new(#00bcd4, 1), '', inline='BBe', group = othGR)
+rpLS  = input.string('Small', "Size", options=['Tiny', 'Small', 'Normal'], inline='BBe', group = othGR)
+rpS   = switch rpLS
+    'Tiny'   => size.tiny
+    'Small'  => size.small
+    'Normal' => size.normal
+rpNR  = input.int(123, 'Number of Rows' , minval = 10, maxval = 155 ,step = 5, group = othGR, tooltip = 'possible values [10-155]')
+rpW   = input.int(27, 'Profile Width %', minval = 10, maxval = 50, group = othGR, tooltip = 'possible values [10-50]') / 100
+drpHO = input.int(13, 'Horizontal Offset', minval = 0, maxval = 100 ,group = othGR, tooltip = 'plotting by default will be performed on rightmost, where\nhorizontal offset option is for further adjustments\npossible values [0-100]')
+rpBG  = input.bool(true, 'Range Background Fill', inline ='BG', group = othGR)
+rpBGC = input.color(color.new(#00bcd4, 95), '', inline ='BG', group = othGR)
+
+//----------------------------------------------------------------------
+// 1c. Combined — Smart Money Fib / OTE
+//----------------------------------------------------------------------
+pivotLen      = input.int(10,  "Pivot Length", minval = 1, group = "Structure",
+     tooltip = "Number of bars on each side used to detect swing highs and lows.")
+showSwingLbl  = input.bool(true, "Show Swing Labels", group = "Structure",
+     tooltip = "Show price labels at every detected swing high and swing low.")
+
+showOTE       = input.bool(true,  "Show OTE Zone", group = "Fibonacci / OTE",
+     tooltip = "Fill the Optimal Trade Entry zone between the two configurable retracement levels.")
+showFibLines  = input.bool(true,  "Show Fib Levels", group = "Fibonacci / OTE",
+     tooltip = "Draw individual horizontal Fibonacci retracement level lines.")
+showSwingLine = input.bool(true,  "Show Swing Diagonal", group = "Fibonacci / OTE",
+     tooltip = "Draw a dashed diagonal line connecting the anchor low to the anchor high (bullish) or anchor high to anchor low (bearish).")
+extendFibs    = input.bool(true,  "Extend Fib Lines", group = "Fibonacci / OTE",
+     tooltip = "Keep all Fibonacci level lines extended to the current bar in real time.")
+showPrev      = input.bool(false, "Show Previous Fibs", group = "Fibonacci / OTE",
+     tooltip = "Preserve old Fibonacci drawings on the chart when a new structure shift is detected.")
+
+oteHighInput  = input.float(0.786, "OTE Upper Level", step = 0.001, group = "Fibonacci / OTE",
+     tooltip = "Upper retracement boundary of the Optimal Trade Entry zone. Default is 0.786.")
+oteLowInput   = input.float(0.618, "OTE Lower Level", step = 0.001, group = "Fibonacci / OTE",
+     tooltip = "Lower retracement boundary of the Optimal Trade Entry zone. Default is 0.618.")
+
+_fibStyleStr  = input.string("Dashed", "Fib Line Style",  options = ["Solid", "Dashed", "Dotted"], group = "Fibonacci / OTE",
+     tooltip = "Line style for the horizontal Fibonacci retracement level lines.")
+_diagStyleStr = input.string("Dotted", "Diagonal Style",  options = ["Solid", "Dashed", "Dotted"], group = "Fibonacci / OTE",
+     tooltip = "Line style for the diagonal swing line connecting the two anchor points.")
+_bosStyleStr  = input.string("Solid",  "BOS Line Style",  options = ["Solid", "Dashed", "Dotted"], group = "Fibonacci / OTE",
+     tooltip = "Line style for the horizontal Break-of-Structure lines drawn at HH and LL.")
+
+bullCol       = input.color(color.new(#15b879, 85), "Bullish Color", group = "Colors",
+     tooltip = "Color used for bullish trend background tint and bullish structure shift line.")
+bearCol       = input.color(color.new(#dd621a, 85), "Bearish Color", group = "Colors",
+     tooltip = "Color used for bearish trend background tint and bearish structure shift line.")
+oteColBull    = input.color(color.new(#22c5bd, 70), "OTE Bull Fill", group = "Colors",
+     tooltip = "Fill color for the OTE zone when the active trend is bullish.")
+oteColBear    = input.color(color.new(#ef4444, 70), "OTE Bear Fill", group = "Colors",
+     tooltip = "Fill color for the OTE zone when the active trend is bearish.")
+fibLineCol    = input.color(color.new(#d3d3d3, 20), "Fib Line Color", group = "Colors",
+     tooltip = "Color for all horizontal Fibonacci level lines and their price labels.")
+
+fibStyle  = _fibStyleStr  == "Solid" ? line.style_solid : _fibStyleStr  == "Dotted" ? line.style_dotted : line.style_dashed
+diagStyle = _diagStyleStr == "Solid" ? line.style_solid : _diagStyleStr == "Dotted" ? line.style_dotted : line.style_dashed
+bosStyle  = _bosStyleStr  == "Solid" ? line.style_solid : _bosStyleStr  == "Dotted" ? line.style_dotted : line.style_dashed
+
+//----------------------------------------------------------------------
+// 1d. Combined — SMT with SXY
+//----------------------------------------------------------------------
+smtGR  = "SMT with SXY"
+smtShow    = input.bool(true, "Show SMT Divergence", group = smtGR)
+smtLabels  = input.bool(true, "Show SMT Labels", group = smtGR)
+smtLines   = input.bool(true, "Show SMT Swing Lines", group = smtGR)
+smtPvtLen  = input.int(5, "SMT Pivot Length", minval = 1, group = smtGR)
+smtPanel   = input.bool(true, "Show SXY Panel", group = smtGR)
+
+//----------------------------------------------------------------------
+// 1e. Combined — Dual Log Regression Channels
+//----------------------------------------------------------------------
+bool  macro_show_channel= input.bool(true, "Show Macro Channel", group = "Macro (Long Term) Channel")
+int   macro_length      = input.int(300, "Macro Lookback Period", group = "Macro (Long Term) Channel")
+float macro_width       = input.float(2.0, "Macro Channel Width (StDev)", step = 0.1, group = "Macro (Long Term) Channel")
+int   macro_line_w      = input.int(2, "Macro Outer Lines Width", minval=1, maxval=10, group = "Macro (Long Term) Channel")
+bool  macro_mid_disp    = input.bool(true, "Show Macro Mid Line", group = "Macro (Long Term) Channel")
+color macro_col_up      = input.color(#311b92, "Macro Upper Line", group = "Macro (Long Term) Channel")
+color macro_col_mid     = input.color(color.blue, "Macro Mid Line", group = "Macro (Long Term) Channel")
+color macro_col_low     = input.color(#311b92, "Macro Lower Line", group = "Macro (Long Term) Channel")
+color macro_col_fill    = input.color(color.new(color.blue, 95), "Macro Background Fill", group = "Macro (Long Term) Channel")
+bool  macro_show_stats  = input.bool(true, "Show Macro Volume Stats", group = "Macro (Long Term) Channel")
+bool  macro_extend      = input.bool(true, "Extend Macro Channel", group = "Macro Future Extension")
+int   macro_ext_bars    = input.int(50, "Macro Extension Bars", minval=1, group = "Macro Future Extension")
+
+bool  macro_show_vp     = input.bool(true, "Show Macro Volume Profile", group = "Macro Volume Profile")
+int   macro_bins        = input.int(50, "Macro Profile Bins (Rows)", minval=5, maxval=100, group = "Macro Volume Profile")
+int   macro_max_w       = input.int(25, "Macro Max Profile Width (Bars)", minval=5, maxval=100, group = "Macro Volume Profile")
+color macro_vp_color    = input.color(color.new(color.blue, 50), "Macro Profile Color", group = "Macro Volume Profile")
+bool  macro_show_poc    = input.bool(true, "Show Macro POC Line", group = "Macro Volume Profile")
+color macro_poc_color   = input.color(color.red, "Macro POC Color", group = "Macro Volume Profile")
+
+bool  short_show_channel= input.bool(true, "Show Short Channel", group = "Short Term Channel")
+int   short_length      = input.int(50, "Short Term Lookback Period", group = "Short Term Channel")
+float short_width       = input.float(1.5, "Short Term Channel Width (StDev)", step = 0.1, group = "Short Term Channel")
+int   short_line_w      = input.int(1, "Short Term Outer Lines Width", minval=1, maxval=10, group = "Short Term Channel")
+bool  short_mid_disp    = input.bool(true, "Show Short Term Mid Line", group = "Short Term Channel")
+color short_col_up      = input.color(#e65100, "Short Term Upper Line", group = "Short Term Channel")
+color short_col_mid     = input.color(color.orange, "Short Term Mid Line", group = "Short Term Channel")
+color short_col_low     = input.color(#e65100, "Short Term Lower Line", group = "Short Term Channel")
+color short_col_fill    = input.color(color.new(color.orange, 95), "Short Term Background Fill", group = "Short Term Channel")
+bool  short_show_stats  = input.bool(true, "Show Short Term Volume Stats", group = "Short Term Channel")
+bool  short_extend      = input.bool(true, "Extend Short Term Channel", group = "Short Term Future Extension")
+int   short_ext_bars    = input.int(20, "Short Term Extension Bars", minval=1, group = "Short Term Future Extension")
+
+bool  short_show_vp     = input.bool(true, "Show Short Volume Profile", group = "Short Term Volume Profile")
+int   short_bins        = input.int(50, "Short Profile Bins (Rows)", minval=5, maxval=100, group = "Short Term Volume Profile")
+int   short_max_w       = input.int(15, "Short Max Profile Width (Bars)", minval=5, maxval=100, group = "Short Term Volume Profile")
+color short_vp_color    = input.color(color.new(color.orange, 50), "Short Profile Color", group = "Short Term Volume Profile")
+bool  short_show_poc    = input.bool(true, "Show Short POC Line", group = "Short Term Volume Profile")
+color short_poc_color   = input.color(color.red, "Short POC Color", group = "Short Term Volume Profile")
+
+//----------------------------------------------------------------------
+// 1f. Combined — Sessions
+//----------------------------------------------------------------------
+asiaSess   = input.session('0100-0900', 'Asia session (local time)', group = "Sessions")
+asiaColor  = input.color(color.yellow, 'Asia color', group = "Sessions")
+sydSess    = input.session('2300-0700', 'Sydney session (local time)', group = "Sessions")
+sydColor   = input.color(color.rgb(255, 69, 0), 'Sydney color', group = "Sessions")
+lonSess    = input.session('0800-1700', 'London session (local time)', group = "Sessions")
+lonColor   = input.color(color.blue, 'London color', group = "Sessions")
+nySess     = input.session('1400-2200', 'New York session (local time)', group = "Sessions")
+nyColor    = input.color(color.purple, 'New York color', group = "Sessions")
+boxTransp  = input.int(95, 'Box transparency (0-100)', group = "Sessions")
+lineStyle  = input.string('solid', 'Vertical line style', options = ['solid', 'dashed', 'dotted'], group = "Sessions")
+tzChoice   = input.string('Europe/Madrid', 'Timezone', options = ['Europe/Madrid', 'Europe/London', 'Asia/Tokyo', 'America/New_York'], group = "Sessions")
+
+//----------------------------------------------------------------------
+// 1h. Combined — Donchian Channels
+//----------------------------------------------------------------------
+dcLength1       = input.int(15, 'Upper Channel Length', minval = 1, group = 'Donchian Channels')
+dcLength2       = input.int(15, 'Lower Channel Length', minval = 1, group = 'Donchian Channels')
+dcOffset        = input.int(1, 'Offset Bars', minval = 0, group = 'Donchian Channels')
+dcShowUpper     = input.bool(true, 'Show Upper Channel', group = 'Donchian Channels')
+dcShowLower     = input.bool(true, 'Show Lower Channel', group = 'Donchian Channels')
+dcShowMid       = input.bool(true, 'Show Mid Line', group = 'Donchian Channels')
+dcColorUpper    = input.color(color.aqua, 'Upper Line Color', group = 'Donchian Channels')
+dcColorLower    = input.color(color.red, 'Lower Line Color', group = 'Donchian Channels')
+dcColorMid      = input.color(color.yellow, 'Mid Line Color', group = 'Donchian Channels')
+dcLineWidth     = input.int(3, 'Channel Line Width', minval = 1, maxval = 10, group = 'Donchian Channels')
+dcMidLineWidth  = input.int(1, 'Mid Line Width', minval = 1, maxval = 10, group = 'Donchian Channels')
+
+//----------------------------------------------------------------------
+// 1i. SXY Overlay Correction
+//----------------------------------------------------------------------
+sxyOverlayShow = input.bool(true, "Show SXY Overlay", group = "SXY Overlay")
+sxyOverlayInv  = input.bool(true, "Invert Correlation", group = "SXY Overlay")
+sxyOverlaySym  = input.string("TVC:SXY", "SXY Symbol", group = "SXY Overlay")
+sxyOverlayLen  = input.int(20, "Lookback Period", group = "SXY Overlay")
+
+//----------------------------------------------------------------------
+// 1j. Williams Fractals
+//----------------------------------------------------------------------
+wfShow      = input.bool(true, 'Show Williams Fractals', group = 'Williams Fractals')
+wfPeriods   = input.int(2, 'Fractal Periods', minval = 2, group = 'Williams Fractals')
+wfBullColor = input.color(#009688, 'Bullish Fractal Color', group = 'Williams Fractals')
+wfBearColor = input.color(#F44336, 'Bearish Fractal Color', group = 'Williams Fractals')
+
+//----------------------------------------------------------------------
+// 1h. Larry Williams — Market Structure
+//----------------------------------------------------------------------
+sh_im = input.bool(true, "Show Intermediate Trend Change Icons")
+
+//======================================================================
+// SECTION 2 — USER-DEFINED TYPES
+//======================================================================
+type bar
+    float o = open
+    float h = high
+    float l = low
+    float c = close
+    float v = volume
+    int   i = bar_index
+
+type pivotPoint
+    int    x
+    float  h
+    float  h1
+    float  l
+    float  l1
+
+//======================================================================
+// SECTION 3 — VARIABLES
+//======================================================================
+
+// 3a. MMMM ICT Variables
+var bool MSS_H = false
+var bool MSS_L = false
+
+var bool  HAlert_MMXM = false
+var int   H_Index_HTFLvL_MMXM = na
+var float H_Price_HTFLvL_MMXM = na
+var bool  LAlert_MMXM = false
+var int   L_Index_HTFLvL_MMXM = na
+var float L_Price_HTFLvL_MMXM = na
+
+// 3b. Combined Variables
+bar b = bar.new()
+var pivotPoint pp = pivotPoint.new()
+bull  = b.c > b.o
+nzV   = nz(b.v)
+rpVST = array.new_float(rpNR + 1, 0.)
+rpVSB = array.new_float(rpNR + 1, 0.)
+rpVSD = array.new_float(rpNR + 1, 0.)
+var dRP = array.new_box()
+var dPC = array.new_line()
+var int   x2   = 0
+var float pir  = na
+var int   pp_x = na
+var float pp_y = na
+
+//--- Fib variables
+pvtHi = ta.pivothigh(high, pivotLen, pivotLen)
+pvtLo = ta.pivotlow(low,   pivotLen, pivotLen)
+
+var float lastSwingHigh    = na
+var float lastSwingLow     = na
+var int   lastSwingHighBar = na
+var int   lastSwingLowBar  = na
+
+var float prevSwingHigh    = na
+var float prevSwingLow     = na
+
+var int   trendState       = 0
+
+var float fibAnchorHigh    = na
+var float fibAnchorLow     = na
+var int   fibAnchorHighBar = na
+var int   fibAnchorLowBar  = na
+
+var array<float> fibLevels  = array.from(0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0)
+var array<line>  fibLines   = array.new<line>()
+var array<label> fibLabels  = array.new<label>()
+var box          oteBox     = na
+var bool         fibsDrawn  = false
+var line         swingDiag  = na
+
+//--- SMT SXY variables
+var float smtLastHH = na
+var float smtLastLL = na
+var int   smtLastHB = na
+var int   smtLastLB = na
+var float smtPrevHH = na
+var float smtPrevLL = na
+var int   smtPrevHB = na
+var int   smtPrevLB = na
+var float smtLastDH = na
+var float smtLastDL = na
+var int   smtLastDHB = na
+var int   smtLastDLB = na
+var float smtPrevDH = na
+var float smtPrevDL = na
+var int   smtPrevDHB = na
+var int   smtPrevDLB = na
+var table smtTbl     = na
+
+//--- SXY Overlay variables
+var float sxyOLowest  = na
+var float sxyOHighest = na
+
+//--- Larry Williams Market Structure variables
+var array<float> swHi_arr_highs = array.new<float>()
+var array<float> swHi_arr_lows = array.new<float>()
+var array<float> swLow_arr_highs = array.new<float>()
+var array<float> swLow_arr_lows = array.new<float>()
+var int sw_dir = 1
+var int l_bi = 0
+var int h_bi = 0
+var line up_line = na
+var line dw_line = na
+var int im_dir = 1
+var array<float> im_tops = array.new<float>()
+var array<float> im_bot = array.new<float>()
+
+//--- Session variables
+var float asiaHigh = na
+var float asiaLow  = na
+var int   asiaStart = na
+var box   asiaBox = na
+
+var float sydHigh  = na
+var float sydLow   = na
+var int   sydStart = na
+var box   sydBox = na
+
+var float lonHigh  = na
+var float lonLow   = na
+var int   lonStart = na
+var box   lonBox = na
+
+var float nyHigh   = na
+var float nyLow    = na
+var int   nyStart = na
+var box   nyBox = na
+
+//======================================================================
+// SECTION 4 — FUNCTIONS
+//======================================================================
+
+//----------------------------------------------------------------------
+// 4a. MMMM ICT — HTF Level Detector
+//----------------------------------------------------------------------
+[ATR] = request.security(syminfo.tickerid, timeframe.period, [ta.atr(200)])
+
+HTF_Detector(SwingPeriod, MaxSwingBack_Method, MaxSwingBack, ATR) =>
+    const int Z = 100000000000000000
+
+    var MSH_P = array.new_float()
+    var MSH_I = array.new_int()
+    var MSL_P = array.new_float()
+    var MSL_I = array.new_int()
+
+    var MSH_Permit = array.new_bool()
+    var AOI_MSH = array.new_int()
+
+    var MSL_Permit = array.new_bool()
+    var AOI_MSL = array.new_int()
+
+    var float Last_MSH_P = 0.0
+    var int Last_MSH_I   = 0
+    var float Last_MSL_P = 0.0
+    var int Last_MSL_I   = 0
+
+    int HSwingBack = 0
+    int LSwingBack = 0
+
+    var bool RealHTFLvL         = false
+    var bool ConsiderableHTFLvL = false
+
+    var float H_Price_HTFLvL = 0.0
+    var int   H_Index_HTFLvL = 0
+    var float L_Price_HTFLvL = 0.0
+    var int   L_Index_HTFLvL = 0
+
+    bool HAlert = false
+    bool LAlert = false
+
+    MSH = ta.pivothigh(SwingPeriod, SwingPeriod)
+    MSL = ta.pivotlow(SwingPeriod, SwingPeriod)
+
+    if not na(MSH)
+        MSH_P.push(high[SwingPeriod])
+        MSH_I.push(time[SwingPeriod])
+        MSH_Permit.push(true)
+        AOI_MSH.push(Z)
+
+    if not na(MSL)
+        MSL_P.push(low[SwingPeriod])
+        MSL_I.push(time[SwingPeriod])
+        MSL_Permit.push(true)
+        AOI_MSL.push(Z)
+
+    if MSH_P.size() > 0
+        Last_MSH_P := MSH_P.get(MSH_P.size() - 1)
+        Last_MSH_I := MSH_I.get(MSH_I.size() - 1)
+
+    if MSL_P.size() > 0
+        Last_MSL_P := MSL_P.get(MSL_P.size() - 1)
+        Last_MSL_I := MSL_I.get(MSL_I.size() - 1)
+
+    switch MaxSwingBack_Method
+        'All'    => HSwingBack := MSH_P.size(), LSwingBack := MSL_P.size()
+        'Custom' => HSwingBack := MaxSwingBack, LSwingBack := MaxSwingBack
+
+    if MSH_P.size() > (MaxSwingBack_Method == 'All' ? 1 : HSwingBack)
+        for i = 1 to HSwingBack by 1
+            if MSH_Permit.get(MSH_P.size() - i)
+                if (bar_index <= AOI_MSH.get(AOI_MSH.size() - i))
+                    if (MSH_P.get(MSH_P.size() - i) - (ATR * ATR_Coefficient) < high and MSH_P.get(MSH_P.size() - i) + (ATR * ATR_Coefficient) > close and (AOI_MSH.get(AOI_MSH.size() - i) == Z))
+                        MSH_Permit.set(MSH_P.size() - i, false)
+                        H_Index_HTFLvL := MSH_I.get(MSH_P.size() - i)
+                        H_Price_HTFLvL := MSH_P.get(MSH_P.size() - i)
+                        HAlert := true
+                if ((MSH_P.get(MSH_P.size() - i) + (ATR * ATR_Coefficient) < close) and (AOI_MSH.get(AOI_MSH.size() - i) == Z))
+                    AOI_MSH.set(AOI_MSH.size() - i, bar_index)
+
+    if MSL_P.size() > (MaxSwingBack_Method == 'All' ? 1 : LSwingBack)
+        for i = 1 to LSwingBack by 1
+            if MSL_Permit.get(MSL_P.size() - i)
+                if (bar_index <= AOI_MSL.get(AOI_MSL.size() - i))
+                    if (MSL_P.get(MSL_P.size() - i) + (ATR * ATR_Coefficient) > low and MSL_P.get(MSL_P.size() - i) - (ATR * ATR_Coefficient) < close and (AOI_MSL.get(AOI_MSL.size() - i) == Z))
+                        MSL_Permit.set(MSL_P.size() - i, false)
+                        L_Index_HTFLvL := MSL_I.get(MSL_P.size() - i)
+                        L_Price_HTFLvL := MSL_P.get(MSL_P.size() - i)
+                        LAlert := true
+                if ((MSL_P.get(MSL_P.size() - i) - (ATR * ATR_Coefficient) > close) and (AOI_MSL.get(AOI_MSL.size() - i) == Z))
+                    AOI_MSL.set(AOI_MSL.size() - i, bar_index)
+    [HAlert, H_Index_HTFLvL, H_Price_HTFLvL, LAlert, L_Index_HTFLvL, L_Price_HTFLvL]
+
+//----------------------------------------------------------------------
+// 4b. MMMM ICT — Drawing PD Array
+//----------------------------------------------------------------------
+Drawing_PD(H_Cond, H_Index, H_Price, L_Cond, L_Index, L_Price) =>
+    var linefill  MSH_Line  = na
+    var line  MSH_Line_up  = na
+    var line  MSH_Line_down  = na
+
+    var label MSH_Label = na
+    var label MSH_Shap  = na
+
+    var linefill  MSL_Line   = na
+    var line  MSL_Line_up   = na
+    var line  MSL_Line_down   = na
+
+    var label MSL_Label = na
+    var label MSL_Shap  = na
+    var bool H_Permit = true
+    var bool L_Permit = true
+
+    if H_Cond and H_Permit
+        H_Permit := false
+        if AShow
+            if HShow
+                MSH_Line_up   := line.new(H_Index, H_Price + (ATR * ATR_Coefficient), time, H_Price + (ATR * ATR_Coefficient), color = na, style = line.style_solid, xloc = xloc.bar_time)
+                MSH_Line_down := line.new(H_Index, H_Price - (ATR * ATR_Coefficient), time, H_Price - (ATR * ATR_Coefficient), color = na, style = line.style_solid, xloc = xloc.bar_time)
+                MSH_Line      := linefill.new(MSH_Line_up, MSH_Line_down, color = na)
+                MSH_Label := label.new(int(math.avg(H_Index, time)), H_Price, 'HTF PD Array', color = #ffffff00, textcolor = na, style = label.style_label_down, size = size.small, xloc = xloc.bar_time)
+
+    if not HAlert_MMXM
+        H_Permit := true
+    if L_Cond and L_Permit
+        L_Permit := false
+        if AShow
+            if LShow
+                MSL_Line_up   := line.new(L_Index, L_Price + (ATR * ATR_Coefficient), time, L_Price + (ATR * ATR_Coefficient), color = na, style = line.style_solid, xloc = xloc.bar_time)
+                MSL_Line_down := line.new(L_Index, L_Price - (ATR * ATR_Coefficient), time, L_Price - (ATR * ATR_Coefficient), color = na, style = line.style_solid, xloc = xloc.bar_time)
+                MSL_Line      := linefill.new(MSL_Line_up, MSL_Line_down, color = na)
+                MSL_Label := label.new(int(math.avg(L_Index, time)), L_Price, 'HTF PD Array', color = #ffffff00, textcolor = na, style = label.style_label_up, size = size.small, xloc = xloc.bar_time)
+
+    if not LAlert_MMXM
+        L_Permit := true
+    if MSS_H
+        MSH_Line_up.set_color(HLColor)
+        MSH_Line_down.set_color(HLColor)
+        MSH_Line.set_color(color.new(HLColor, 95))
+        MSH_Label.set_textcolor(HNColor)
+    if MSS_L
+        MSL_Line_up.set_color(LLColor)
+        MSL_Line_down.set_color(LLColor)
+        MSL_Line.set_color(color.new(LLColor, 95))
+        MSL_Label.set_textcolor(LNColor)
+
+//----------------------------------------------------------------------
+// 4c. MMMM ICT — MSS Level Detector
+//----------------------------------------------------------------------
+MSSLevelDetector(CondHigh, CondLow, DConditionFVG, DDFVG, DPFVG, BarDFVG, SConditionFVG, SDFVG, SPFVG, BarSFVG, Label) =>
+    Body                     = close - open
+    var float MSSLvLP_L      = 0.0
+    var float MSSLvLP_H      = 0.0
+    var int MSSLvLI_L        = 0
+    var int MSSLvLI_H        = 0
+    var bool Permit_HSet     = true
+    var bool Permit_LSet     = true
+    var bool Permit_HReset   = true
+    var bool Permit_LReset   = true
+
+    var line  MSS_LineL      = na
+    var line  MSS_LineH      = na
+    var label MSS_NameH      = na
+    var label MSS_NameL      = na
+    var label MSS_ShapH      = na
+    var label MSS_ShapL      = na
+
+    var bool Bear_Trigger    = false
+    var bool Bull_Trigger    = false
+
+    var int   Bear_FVG       = 0
+    var float Bear_FVG_D     = 0.0
+    var float Bear_FVG_P     = 0.0
+
+    var int   Bull_FVG       = 0
+    var float Bull_FVG_D     = 0.0
+    var float Bull_FVG_P     = 0.0
+
+    var bool FVG_Bear_Trigger = false
+    var bool FVG_Bull_Trigger = false
+
+    var FVG_Bear_D            = array.new_float()
+    var FVG_Bear_P            = array.new_float()
+    var FVG_Bear_I            = array.new_int()
+
+    var FVG_Bull_D            = array.new_float()
+    var FVG_Bull_P            = array.new_float()
+    var FVG_Bull_I            = array.new_int()
+
+    var float H_P = 0.0
+    var int   H_I = 0
+    var float L_P = 0.0
+    var int   L_I = 0
+
+    if bool(ta.pivothigh(2, 1))
+        H_P := high[1]
+        H_I := bar_index[1]
+
+    if bool(ta.pivotlow(2, 1))
+        L_P := low[1]
+        L_I := bar_index[1]
+
+    if CondHigh
+        Permit_HSet := true
+        if Permit_HSet and H_Index_HTFLvL_MMXM != H_Index_HTFLvL_MMXM[1]
+            Permit_HReset := true
+            MSSLvLP_H := L_P
+            MSSLvLI_H := L_I
+            if AShow_MSS and HShow_MSS
+                MSS_LineH := line.new(MSSLvLI_H, MSSLvLP_H, bar_index, MSSLvLP_H, color = na, style = line.style_dotted)
+                MSS_NameH := label.new(MSSLvLI_H + 1, low[bar_index - MSSLvLI_H] - (ATR * 0.3), Label, color = na, style = label.style_label_upper_left, textcolor = na, size = size.small)
+            Permit_HSet := false
+    if Permit_HReset[0]
+        if SConditionFVG[0]
+            FVG_Bear_I.push(BarSFVG)
+            FVG_Bear_D.push(SDFVG)
+            FVG_Bear_P.push(SPFVG)
+        if FVG_Bear_I.size() > 0
+            if high > FVG_Bear_D.get(FVG_Bear_I.size() - 1)
+                FVG_Bear_I.remove(FVG_Bear_I.size() - 1)
+                FVG_Bear_D.remove(FVG_Bear_D.size() - 1)
+                FVG_Bear_P.remove(FVG_Bear_P.size() - 1)
+
+        if close[1] >= MSSLvLP_H and (bar_index[1] - MSSLvLI_H) <= MSS_Length
+            MSS_LineH.set_x2(bar_index + 1)
+
+        if close[1] <= MSSLvLP_H and (bar_index[1] - MSSLvLI_H) <= MSS_Length
+            MSS_LineH.set_color(HLColor_MSS)
+            MSS_NameH.set_textcolor(HNColor_MSS)
+            Permit_HReset := false
+            if AShow_MSS and HShow_MSS
+                MSS_ShapH := label.new(bar_index, high + (ATR * 0.6), "", color = HNColor_MSS, style = label.style_triangledown, size = size.tiny)
+
+    if CondLow
+        Permit_LSet := true
+        if Permit_LSet and L_Index_HTFLvL_MMXM != L_Index_HTFLvL_MMXM[1]
+            Permit_LReset := true
+            MSSLvLP_L := H_P
+            MSSLvLI_L := H_I
+            if AShow_MSS and LShow_MSS
+                MSS_LineL := line.new(MSSLvLI_L, MSSLvLP_L, bar_index, MSSLvLP_L, color = na, style = line.style_dotted)
+                MSS_NameL := label.new(MSSLvLI_L + 1, high[bar_index - MSSLvLI_L] + (ATR * 0.6), Label, color = na, style = label.style_label_lower_right, textcolor = na, size = size.small)
+            Permit_LSet := false
+    if Permit_LReset[0]
+        if DConditionFVG[0]
+            FVG_Bull_I.push(BarDFVG)
+            FVG_Bull_D.push(DDFVG)
+            FVG_Bull_P.push(DPFVG)
+        if FVG_Bull_I.size() > 0
+            if low < FVG_Bull_D.get(FVG_Bull_I.size() - 1)
+                FVG_Bull_I.remove(FVG_Bull_I.size() - 1)
+                FVG_Bull_D.remove(FVG_Bull_D.size() - 1)
+                FVG_Bull_P.remove(FVG_Bull_P.size() - 1)
+        if close[0] <= MSSLvLP_L and (bar_index[0] - MSSLvLI_L) <= MSS_Length
+            MSS_LineL.set_x2(bar_index + 1)
+        if close[0] >= MSSLvLP_L and (bar_index[0] - MSSLvLI_L) <= MSS_Length
+            MSS_LineL.set_color(LLColor_MSS)
+            MSS_NameL.set_textcolor(LNColor_MSS)
+            Permit_LReset := false
+            if AShow_MSS and LShow_MSS
+                MSS_ShapL := label.new(bar_index, low - (ATR * 0.6), "", color = LNColor_MSS, style = label.style_triangleup, size = size.tiny)
+
+    if FVG_Bull_I.size() > 0 or (ta.change(FVG_Bull_I.size() > 0) and FVG_Bull_I.size() > 0)
+        Bull_FVG := FVG_Bull_I.get(FVG_Bull_I.size() - 1)
+        Bull_FVG_D := FVG_Bull_D.get(FVG_Bull_D.size() - 1)
+        Bull_FVG_P := FVG_Bull_P.get(FVG_Bull_P.size() - 1)
+    if FVG_Bear_I.size() > 0 or (ta.change(FVG_Bear_I.size() > 0) and FVG_Bear_I.size() > 0)
+        Bear_FVG := FVG_Bear_I.get(FVG_Bear_I.size() - 1)
+        Bear_FVG_D := FVG_Bear_D.get(FVG_Bear_D.size() - 1)
+        Bear_FVG_P := FVG_Bear_P.get(FVG_Bear_P.size() - 1)
+
+    if Permit_HReset[1] and Permit_HReset == false
+        Bear_Trigger := true
+        if FVG_Bear_I.size() > 0 and Bear_FVG != 0
+            FVG_Bear_Trigger := true
+        else
+            FVG_Bear_Trigger := false
+    else
+        Bear_Trigger := false
+        FVG_Bear_Trigger := false
+
+    if Permit_LReset[1] and Permit_LReset == false
+        Bull_Trigger := true
+        if FVG_Bull_I.size() > 0 and Bull_FVG != 0
+            FVG_Bull_Trigger := true
+        else
+            FVG_Bull_Trigger := false
+    else
+        Bull_Trigger := false
+        FVG_Bull_Trigger := false
+
+    if HAlert_MMXM
+        Bear_FVG   := 0
+        Bear_FVG_D := 0.0
+        Bear_FVG_P := 0.0
+        FVG_Bear_D.clear()
+        FVG_Bear_P.clear()
+        FVG_Bear_I.clear()
+    if LAlert_MMXM
+        FVG_Bull_D.clear()
+        FVG_Bull_P.clear()
+        FVG_Bull_I.clear()
+        Bull_FVG   := 0
+        Bull_FVG_D := 0.0
+        Bull_FVG_P := 0.0
+    [Bull_Trigger, Bear_Trigger, FVG_Bull_Trigger, FVG_Bear_Trigger, Bull_FVG, Bear_FVG, Bull_FVG_D, Bear_FVG_D, Bull_FVG_P, Bear_FVG_P, Permit_LReset, Permit_HReset]
+
+//----------------------------------------------------------------------
+// 4d. Combined — Helper Functions
+//----------------------------------------------------------------------
+f_drawLabelX(_x, _y, _text, _xloc, _yloc, _color, _style, _textcolor, _size, _textalign, _tooltip) =>
+    var lb = label.new(_x, _y, _text, _xloc, _yloc, _color, _style, _textcolor, _size, _textalign, _tooltip)
+    lb.set_xy(_x, _y)
+    lb.set_text(_text)
+    lb.set_tooltip(_tooltip)
+    lb.set_textcolor(_textcolor)
+
+fibPrice(float level, float anchorHigh, float anchorLow, bool isBull) =>
+    isBull ? anchorHigh - (anchorHigh - anchorLow) * level : anchorLow + (anchorHigh - anchorLow) * level
+
+styleFromStr(str) =>
+    str == 'dashed' ? line.style_dashed : str == 'dotted' ? line.style_dotted : line.style_solid
+
+inSession(sess) =>
+    not na(time(timeframe.period, sess + ':1234567', tzChoice))
+
+entered(cond) =>
+    cond and not cond[1]
+
+exited(cond) =>
+    not cond and cond[1]
+
+f_log_regression(src, length) =>
+    float sumX      = 0.0
+    float sumY      = 0.0
+    float sumXSqr   = 0.0
+    float sumXY     = 0.0
+
+    for i = 0 to length - 1
+        val = math.log(src[i])
+        per = i + 1.0
+        sumX += per
+        sumY += val
+        sumXSqr += per * per
+        sumXY += val * per
+
+    slope = (length * sumXY - sumX * sumY) / (length * sumXSqr - sumX * sumX)
+    intercept = (sumY - slope * sumX) / length
+
+    [slope, intercept]
+
+get_ma(type, src, length) =>
+    type == "EMA" ? ta.ema(src, length) : ta.sma(src, length)
+
+f_format_vol(float vol) =>
+    string res = ""
+    if vol >= 1000000
+        res := str.tostring(vol / 1000000, "#.#") + "M"
+    else if vol >= 1000
+        res := str.tostring(vol / 1000, "#.#") + "k"
+    else
+        res := str.tostring(vol, "#")
+    res
+
+f_render_channel(length, channel_width, line_w, mid_disp, col_up, col_mid, col_low, fill_color, show_stats, show_vp, bin_count, max_w, vp_color, extend_ch, ext_bars, show_poc, poc_color) =>
+    [slope, intercept] = f_log_regression(close, length)
+
+    float reg_start = math.exp(intercept + slope * length)
+    float reg_end   = math.exp(intercept)
+    float deviation = ta.stdev(close, length)
+
+    float upper_start = reg_start + deviation * channel_width
+    float upper_end   = reg_end + deviation * channel_width
+    float lower_start = reg_start - deviation * channel_width
+    float lower_end   = reg_end - deviation * channel_width
+
+    var line mid_line       = na
+    var line upper_line     = na
+    var line lower_line     = na
+    var linefill fill       = na
+    var label dir_label     = na
+    var label stats_lbl     = na
+    var line mid_ext        = na
+    var line upper_ext      = na
+    var line lower_ext      = na
+    var polyline vp_poly    = na
+    var line poc_line       = na
+
+    if mid_disp
+        if na(mid_line)
+            mid_line := line.new(bar_index[length], reg_start, bar_index, reg_end, color=col_mid, style=line.style_dashed)
+        else
+            mid_line.set_xy1(bar_index[length], reg_start)
+            mid_line.set_xy2(bar_index, reg_end)
+    else
+        line.delete(mid_line)
+
+    if na(upper_line)
+        upper_line := line.new(bar_index[length], upper_start, bar_index, upper_end, width=line_w, color=col_up)
+    else
+        upper_line.set_xy1(bar_index[length], upper_start)
+        upper_line.set_xy2(bar_index, upper_end)
+        upper_line.set_width(line_w)
+
+    if na(lower_line)
+        lower_line := line.new(bar_index[length], lower_start, bar_index, lower_end, width=line_w, color=col_low)
+    else
+        lower_line.set_xy1(bar_index[length], lower_start)
+        lower_line.set_xy2(bar_index, lower_end)
+        lower_line.set_width(line_w)
+
+    if na(fill)
+        fill := linefill.new(upper_line, lower_line, fill_color)
+    else
+        fill.set_color(fill_color)
+
+    if extend_ch
+        float reg_fwd   = math.exp(intercept - slope * ext_bars)
+        float upper_fwd = reg_fwd + deviation * channel_width
+        float lower_fwd = reg_fwd - deviation * channel_width
+
+        if mid_disp
+            if na(mid_ext)
+                mid_ext := line.new(bar_index, reg_end, bar_index + ext_bars, reg_fwd, color=col_mid, style=line.style_dotted)
+            else
+                mid_ext.set_xy1(bar_index, reg_end)
+                mid_ext.set_xy2(bar_index + ext_bars, reg_fwd)
+        else
+            line.delete(mid_ext)
+
+        if na(upper_ext)
+            upper_ext := line.new(bar_index, upper_end, bar_index + ext_bars, upper_fwd, color=col_up, style=line.style_dashed, width=line_w)
+        else
+            upper_ext.set_xy1(bar_index, upper_end)
+            upper_ext.set_xy2(bar_index + ext_bars, upper_fwd)
+            upper_ext.set_width(line_w)
+
+        if na(lower_ext)
+            lower_ext := line.new(bar_index, lower_end, bar_index + ext_bars, lower_fwd, color=col_low, style=line.style_dashed, width=line_w)
+        else
+            lower_ext.set_xy1(bar_index, lower_end)
+            lower_ext.set_xy2(bar_index + ext_bars, lower_fwd)
+            lower_ext.set_width(line_w)
+    else
+        line.delete(mid_ext)
+        line.delete(upper_ext)
+        line.delete(lower_ext)
+
+    bool is_uptrend = reg_end > reg_start
+    string arrow_text = is_uptrend ? "⇗" : "⇘"
+    float label_y     = is_uptrend ? lower_start : upper_start
+    string label_style = is_uptrend ? label.style_label_upper_right : label.style_label_lower_right
+    string label_style1 = is_uptrend ? label.style_label_lower_right : label.style_label_upper_right
+    color label_text_color = is_uptrend ? col_up : col_low
+
+    if na(dir_label)
+        dir_label := label.new(bar_index[length], label_y, text=arrow_text, style=label_style, color=color.new(color.black, 100), textcolor=label_text_color, size=size.large)
+    else
+        dir_label.set_xy(bar_index[length], label_y)
+        dir_label.set_text(arrow_text)
+        dir_label.set_style(label_style)
+        dir_label.set_textcolor(label_text_color)
+
+    float buy_vol = 0.0
+    float sell_vol = 0.0
+    float[] bin_vols = array.new_float(bin_count, 0.0)
+
+    for i = 0 to length - 1
+        if close[i] > open[i]
+            buy_vol += volume[i]
+        else if close[i] < open[i]
+            sell_vol += volume[i]
+
+        if show_vp
+            float hist_reg_mid    = math.exp(intercept + slope * i)
+            float hist_upper_line = hist_reg_mid + deviation * channel_width
+            float hist_lower_line = hist_reg_mid - deviation * channel_width
+            float hist_height     = hist_upper_line - hist_lower_line
+
+            if close[i] >= hist_lower_line and close[i] <= hist_upper_line
+                float bar_bin_step = hist_height / bin_count
+                int bin_index = math.floor((close[i] - hist_lower_line) / bar_bin_step)
+                bin_index := math.min(math.max(bin_index, 0), bin_count - 1)
+                array.set(bin_vols, bin_index, array.get(bin_vols, bin_index) + volume[i])
+
+    float total_vol = buy_vol + sell_vol
+    float delta_pct = total_vol > 0 ? ((buy_vol - sell_vol) / total_vol) * 100 : 0.0
+
+    string buy_str   = f_format_vol(buy_vol)
+    string sell_str  = f_format_vol(sell_vol)
+    string delta_str = (delta_pct >= 0 ? "+" : "") + str.tostring(delta_pct, "#.#") + "%"
+    string stats_text = "Buy: " + buy_str + "\nSell: " + sell_str + "\nDelta: " + delta_str
+
+    if show_stats and barstate.islast
+        if na(stats_lbl)
+            stats_lbl := label.new(bar_index[length], label_y, text=stats_text, style=label_style1, color=color.new(color.black, 100), textcolor=color.white, size=size.small)
+        else
+            stats_lbl.set_xy(bar_index[length], label_y)
+            stats_lbl.set_text(stats_text)
+    else
+        label.delete(stats_lbl)
+
+    if show_vp and barstate.islast
+        float max_bin_vol = array.max(bin_vols)
+        int poc_bin_idx = bin_vols.indexof(max_bin_vol)
+
+        chart.point[] vp_points = array.new<chart.point>()
+        int start_index = bar_index[length]
+        float total_start_height = upper_start - lower_start
+        float start_bin_step = total_start_height / bin_count
+        float channel_slope_per_bar = (reg_end - reg_start) / length
+
+        if max_bin_vol > 0
+            for idx = 0 to bin_count - 1
+                float current_vol = array.get(bin_vols, idx)
+                int calculated_width_bars = math.round((current_vol / max_bin_vol) * max_w)
+
+                float price_bottom_start = lower_start + (idx * start_bin_step)
+                float price_top_start    = price_bottom_start + start_bin_step
+
+                float price_bottom_projected = price_bottom_start + (channel_slope_per_bar * calculated_width_bars)
+                float price_top_projected    = price_top_start + (channel_slope_per_bar * calculated_width_bars)
+
+                array.push(vp_points, chart.point.from_index(start_index, price_bottom_start))
+                array.push(vp_points, chart.point.from_index(start_index + calculated_width_bars, price_bottom_projected))
+                array.push(vp_points, chart.point.from_index(start_index + calculated_width_bars, price_top_projected))
+                array.push(vp_points, chart.point.from_index(start_index, price_top_start))
+
+            polyline.delete(vp_poly)
+            vp_poly := polyline.new(vp_points, line_color=vp_color, fill_color=color.new(vp_color, 85), closed=false, line_width=1, force_overlay=true)
+
+            if show_poc
+                float poc_offset_from_bottom = (poc_bin_idx + 0.5) * start_bin_step
+                float poc_start_y = lower_start + poc_offset_from_bottom
+                float poc_end_y   = lower_end + poc_offset_from_bottom
+
+                if na(poc_line)
+                    poc_line := line.new(start_index, poc_start_y, bar_index, poc_end_y, color=poc_color, width=2, style=line.style_solid)
+                else
+                    line.set_xy1(poc_line, start_index, poc_start_y)
+                    line.set_xy2(poc_line, bar_index, poc_end_y)
+        else
+            line.delete(poc_line)
+    else
+        polyline.delete(vp_poly)
+        line.delete(poc_line)
+
+    true
+
+//======================================================================
+// SECTION 5 — MAIN CALCULATIONS & VISUALIZATION
+//======================================================================
+
+//----------------------------------------------------------------------
+// 5a. MMMM ICT — HTF Detector Call
+//----------------------------------------------------------------------
+[HAlert_o, H_Index_HTFLvL_o, H_Price_HTFLvL_o, LAlert_o, L_Index_HTFLvL_o, L_Price_HTFLvL_o] =
+ request.security(syminfo.tickerid, TF, HTF_Detector(SwingPeriod, MaxSwingBack_Method, MaxSwingBack, ATR), gaps = barmerge.gaps_on)
+
+if HAlert_o
+    HAlert_MMXM      := true
+    H_Index_HTFLvL_MMXM := H_Index_HTFLvL_o
+    H_Price_HTFLvL_MMXM := H_Price_HTFLvL_o
+else
+    HAlert_MMXM      := false
+
+if LAlert_o
+    LAlert_MMXM      := true
+    L_Index_HTFLvL_MMXM := L_Index_HTFLvL_o
+    L_Price_HTFLvL_MMXM := L_Price_HTFLvL_o
+else
+    LAlert_MMXM      := false
+
+Drawing_PD(HAlert_MMXM, H_Index_HTFLvL_MMXM, H_Price_HTFLvL_MMXM, LAlert_MMXM, L_Index_HTFLvL_MMXM, L_Price_HTFLvL_MMXM)
+
+//----------------------------------------------------------------------
+// 5b. MMMM ICT — FVG & MSS
+//----------------------------------------------------------------------
+[DConditionFVG, DDFVG, DPFVG, BarDFVG, SConditionFVG, SDFVG, SPFVG, BarSFVG] = FVG.FVGDetector(PFVGFilter ? 'On' : 'Off', PFVGFilterType, false, false)
+
+[Bull_Trigger, Bear_Trigger, FVG_Bull_Trigger, FVG_Bear_Trigger, Bull_FVG, Bear_FVG, Bull_FVG_D, Bear_FVG_D, Bull_FVG_P, Bear_FVG_P, Permit_LReset, Permit_HReset] =
+ MSSLevelDetector(HAlert_MMXM, LAlert_MMXM, DConditionFVG, DDFVG, DPFVG, BarDFVG, SConditionFVG, SDFVG, SPFVG, BarSFVG, 'MSS')
+
+if Permit_LReset == false and Permit_LReset[1]
+    MSS_L := true
+else
+    MSS_L := false
+
+if Permit_HReset == false and Permit_HReset[1]
+    MSS_H := true
+else
+    MSS_H := false
+
+[MitigationAlert_Bull, MitigationAlert_BB_Bull, ProximalPrice_BB_Bull, DistalPrice_BB_Bull, Index_BB_Bull] = Drawing.OBDrawing('Demand', FVG_Bull_Trigger and (bar_index - Bull_FVG < 500), Bull_FVG_D, Bull_FVG_P, Bull_FVG, true, FVG_Length, MLFVG, MLFVG, true, false, DFVGShow, false, DFVGColor, #ffffff00)
+
+[MitigationAlert_Bear, MitigationAlert_BB_Bear, ProximalPrice_BB_Bear, DistalPrice_BB_Bear, Index_BB_Bear] = Drawing.OBDrawing('Supply', FVG_Bear_Trigger and (bar_index - Bear_FVG < 500), Bear_FVG_D, Bear_FVG_P, Bear_FVG, true, FVG_Length, MLFVG, MLFVG, true, false, SFVGShow, false, SFVGColor, #ffffff00)
+
+//----------------------------------------------------------------------
+// 5c. MMMM ICT — SMT Divergence (Custom Symbol)
+//----------------------------------------------------------------------
+[Open_Sym, High_Sym, Low_Sym, Close_Sym] = request.security(Sym, timeframe.period, [open, high, low, close])
+
+UpPivot = bool(ta.pivothigh(n_mxm, n_mxm))
+DownPivot = bool(ta.pivotlow(n_mxm, n_mxm))
+
+High_Last_Price = ta.valuewhen(UpPivot, high[n_mxm], 0)
+High_Per_Price = ta.valuewhen(UpPivot, high[n_mxm], 1)
+High_Last_Hist = ta.valuewhen(UpPivot, High_Sym[n_mxm], 0)
+High_Per_Hist = ta.valuewhen(UpPivot, High_Sym[n_mxm], 1)
+High_Last_Bar = ta.valuewhen(UpPivot, bar_index[n_mxm], 0)
+High_Per_Bar = ta.valuewhen(UpPivot, bar_index[n_mxm], 1)
+Time_Condition_Bear = (High_Last_Bar + 30) > bar_index
+
+Last_Bearish_Divergece = if High_Last_Hist > 0 and High_Per_Hist > 0 and Time_Condition_Bear and (High_Last_Bar - High_Per_Bar) < 30
+    ((High_Last_Price > High_Per_Price) and (High_Last_Hist < High_Per_Hist)) or ((High_Last_Price < High_Per_Price) and (High_Last_Hist > High_Per_Hist))
+else
+    false
+
+Low_Last_Price = ta.valuewhen(DownPivot, low[n_mxm], 0)
+Low_Per_Price = ta.valuewhen(DownPivot, low[n_mxm], 1)
+Low_Last_Hist = ta.valuewhen(DownPivot, Low_Sym[n_mxm], 0)
+Low_Per_Hist = ta.valuewhen(DownPivot, Low_Sym[n_mxm], 1)
+Low_Last_Bar = ta.valuewhen(DownPivot, bar_index[n_mxm], 0)
+Low_Per_Bar = ta.valuewhen(DownPivot, bar_index[n_mxm], 1)
+Time_Condition_Bull = (Low_Last_Bar + 30) > bar_index
+
+Last_Bullish_Divergece = if Low_Last_Hist > 0 and Low_Per_Hist > 0 and Time_Condition_Bull and (Low_Last_Bar - Low_Per_Bar) < 30
+    ((Low_Last_Price < Low_Per_Price) and (Low_Last_Hist > Low_Per_Hist)) or ((Low_Last_Price > Low_Per_Price) and (Low_Last_Hist < Low_Per_Hist))
+else
+    false
+
+var BeLine_OnChart  = array.new_line()
+var BuLine_OnChart  = array.new_line()
+var BeLabel_OnChart = array.new_label()
+var BuLabel_OnChart = array.new_label()
+
+if Last_Bullish_Divergece and Permit_LReset
+    BuLine_OnChart.push(line.new(Low_Per_Bar, low[bar_index - Low_Per_Bar], Low_Last_Bar, low[bar_index - Low_Last_Bar], color = Bull_Line ? color.black : na, width = 1, style = line.style_dashed))
+    BuLabel_OnChart.push(label.new(Low_Last_Bar, low[bar_index - Low_Last_Bar], '+SMT', color = Bull_Label ? color.green : na, textcolor = color.white, size = size.tiny, style = label.style_label_up))
+
+if Last_Bearish_Divergece and Permit_HReset
+    BeLine_OnChart.push(line.new(High_Per_Bar, high[bar_index - High_Per_Bar], High_Last_Bar, high[bar_index - High_Last_Bar], color = Bear_Line ? color.black : na, width = 1, style = line.style_dashed))
+    BeLabel_OnChart.push(label.new(High_Last_Bar, high[bar_index - High_Last_Bar], '-SMT', color = Bear_Label ? color.red : na, textcolor = color.white, size = size.tiny, style = label.style_label_down))
+
+if BuLine_OnChart.size() > 1
+    line.delete(array.remove(BuLine_OnChart, 0))
+    label.delete(array.remove(BuLabel_OnChart, 0))
+
+if BeLine_OnChart.size() > 1
+    line.delete(array.remove(BeLine_OnChart, 0))
+    label.delete(array.remove(BeLabel_OnChart, 0))
+
+//----------------------------------------------------------------------
+// 5d. Combined — Liquidity Sentiment Profile
+//----------------------------------------------------------------------
+pp_h = ta.pivothigh(ppLen, ppLen)
+pp_l = ta.pivotlow (ppLen, ppLen)
+if not na(pp_h) and tfIN == 'Swing High'
+    pp.h1 := pp.h
+    pp.h  := pp_h
+    pp_y  := pp_h
+    pp_x  := b.i
+if not na(pp_l) and tfIN == 'Swing Low'
+    pp.l1 := pp.l
+    pp.l  := pp_l
+    pp_y  := pp_l
+    pp_x  := b.i
+if tfOT == 'D' and tfIN == 'Day' ? dayofweek != dayofweek[1] : bool(ta.change(time(tfOT)))
+    x2 := b.i
+rpLN = tfIN == 'Fixed Range' ? drpLN : barstate.islast ? tfIN == 'Swing High' or tfIN == 'Swing Low' ? last_bar_index - pp_x + ppLen : last_bar_index - x2 : 1
+pHST = ta.highest(high, rpLN > 0 ? rpLN + 1 : 1)
+pLST = ta.lowest (low , rpLN > 0 ? rpLN + 1 : 1)
+pSTP = (pHST - pLST) / rpNR
+
+//----------------------------------------------------------------------
+// 5e. Combined — Smart Money Fibonacci
+//----------------------------------------------------------------------
+if not na(pvtHi)
+    prevSwingHigh    := lastSwingHigh
+    lastSwingHigh    := pvtHi
+    lastSwingHighBar := bar_index - pivotLen
+
+if not na(pvtLo)
+    prevSwingLow    := lastSwingLow
+    lastSwingLow    := pvtLo
+    lastSwingLowBar := bar_index - pivotLen
+
+var bool bullShift = false
+var bool bearShift = false
+
+bullShift := false
+bearShift := false
+
+if not na(pvtHi) and not na(prevSwingHigh)
+    if pvtHi > prevSwingHigh and trendState <= 0
+        bullShift        := true
+        trendState       := 1
+        fibAnchorLow     := lastSwingLow
+        fibAnchorLowBar  := lastSwingLowBar
+        fibAnchorHigh    := pvtHi
+        fibAnchorHighBar := bar_index - pivotLen
+
+if not na(pvtLo) and not na(prevSwingLow)
+    if pvtLo < prevSwingLow and trendState >= 0
+        bearShift        := true
+        trendState       := -1
+        fibAnchorHigh    := lastSwingHigh
+        fibAnchorHighBar := lastSwingHighBar
+        fibAnchorLow     := pvtLo
+        fibAnchorLowBar  := bar_index - pivotLen
+
+if trendState == 1 and not bullShift and not na(pvtHi)
+    if not na(fibAnchorHigh) and pvtHi > fibAnchorHigh
+        fibAnchorHigh    := pvtHi
+        fibAnchorHighBar := bar_index - pivotLen
+
+if trendState == -1 and not bearShift and not na(pvtLo)
+    if not na(fibAnchorLow) and pvtLo < fibAnchorLow
+        fibAnchorLow    := pvtLo
+        fibAnchorLowBar := bar_index - pivotLen
+
+//----------------------------------------------------------------------
+// 5f. Combined — SMT with SXY
+//----------------------------------------------------------------------
+smtSxySymbol = "TVC:SXY"
+smtSxyH = request.security(smtSxySymbol, timeframe.period, high)
+smtSxyL = request.security(smtSxySymbol, timeframe.period, low)
+smtSxyC = request.security(smtSxySymbol, timeframe.period, close)
+
+smtIsSH = ta.pivothigh(high, smtPvtLen, smtPvtLen)
+smtIsSL = ta.pivotlow(low,   smtPvtLen, smtPvtLen)
+smtIsDH = ta.pivothigh(smtSxyH, smtPvtLen, smtPvtLen)
+smtIsDL = ta.pivotlow (smtSxyL, smtPvtLen, smtPvtLen)
+
+if not na(smtIsSH)
+    smtPrevHH := smtLastHH
+    smtPrevHB := smtLastHB
+    smtLastHH := smtIsSH
+    smtLastHB := bar_index - smtPvtLen
+
+if not na(smtIsSL)
+    smtPrevLL := smtLastLL
+    smtPrevLB := smtLastLB
+    smtLastLL := smtIsSL
+    smtLastLB := bar_index - smtPvtLen
+
+if not na(smtIsDH)
+    smtPrevDH := smtLastDH
+    smtPrevDHB := smtLastDHB
+    smtLastDH := smtIsDH
+    smtLastDHB := bar_index - smtPvtLen
+
+if not na(smtIsDL)
+    smtPrevDL := smtLastDL
+    smtPrevDLB := smtLastDLB
+    smtLastDL := smtIsDL
+    smtLastDLB := bar_index - smtPvtLen
+
+smtBearish = na(smtPrevHH) or na(smtPrevDH) ? false : smtLastHH > smtPrevHH and smtLastDH < smtPrevDH
+smtBullish = na(smtPrevLL) or na(smtPrevDL) ? false : smtLastLL < smtPrevLL and smtLastDL > smtPrevDL
+
+//----------------------------------------------------------------------
+// 5g. Combined — Visualization: Liquidity Sentiment Profile
+//----------------------------------------------------------------------
+if barstate.islast and bool(nzV) and timeframe.period != tfOT and rpLN > 1 and pSTP > 0
+    if dRP.size() > 0
+        for i = 0 to dRP.size() - 1 by 1
+            box.delete(dRP.shift())
+    if dPC.size() > 0
+        for i = 0 to dPC.size() - 1 by 1
+            line.delete(dPC.shift())
+    for bI = rpLN to 0 by 1
+        l = 0
+        for pLL = pLST to pHST by pSTP
+            if (b[bI]).h >= pLL and (b[bI]).l < pLL + pSTP
+                rpVST.set(l, rpVST.get(l) + nzV[bI] * (((b[bI]).h - (b[bI]).l) == 0 ? 1 : pSTP / ((b[bI]).h - (b[bI]).l)))
+
+                if bull[bI]
+                    rpVSB.set(l, rpVSB.get(l) + nzV[bI] * (((b[bI]).h - (b[bI]).l) == 0 ? 1 : pSTP / ((b[bI]).h - (b[bI]).l)))
+            l := l + 1
+        if rpPC
+            if bI == rpLN
+                pir := pLST + (rpVST.indexof(rpVST.max()) + .50) * pSTP
+            else
+                dPC.push(line.new((b[bI]).i - 1, pir, (b[bI]).i, pLST + (rpVST.indexof(rpVST.max()) + .50) * pSTP, color = rpPCC, width = rpPCW))
+                pir := pLST + (rpVST.indexof(rpVST.max()) + .50) * pSTP
+    for l = 0 to rpNR - 1 by 1
+        bbp  = 2 * rpVSB.get(l) - rpVST.get(l)
+        rpVSD.set(l, rpVSD.get(l) + bbp * (bbp > 0 ? 1 : -1))
+    if rpBG
+        dRP.push(box.new(b.i - rpLN, pLST, b.i, pHST, rpBGC, bgcolor = rpBGC))
+    if rpPL
+        f_drawLabelX(b.i + drpHO + rpLN * rpW, pHST, str.tostring(pHST, format.mintick), xloc.bar_index, yloc.price, color(na), label.style_label_down, rpPLC, rpS, text.align_left, 'Profile High - ' + str.tostring(pHST, format.mintick) + '\n %' + str.tostring((pHST - pLST) / pLST * 100, '#.##') + ' higher than the Profile Low\n\nNumber of bars : ' + str.tostring(rpLN))
+        f_drawLabelX(b.i + drpHO + rpLN * rpW, pLST, str.tostring(pLST, format.mintick), xloc.bar_index, yloc.price, color(na), label.style_label_up  , rpPLC, rpS, text.align_left, 'Profile Low - '  + str.tostring(pLST, format.mintick) + '\n %' + str.tostring((pHST - pLST) / pHST * 100, '#.##') + ' lower than the Profile High\n\nNumber of bars : ' + str.tostring(rpLN))
+        if tfIN == 'Swing High'
+            swH = pp.h > pp.h1 ? "HH" : pp.h < pp.h1 ? "LH" : na
+            f_drawLabelX((b[rpLN]).i, pp.h, swH, xloc.bar_index, yloc.price, color(na), label.style_label_down, rpPLC, rpS, text.align_center, 'Swing High : ' + str.tostring(pp.h, format.mintick))
+
+        if tfIN == 'Swing Low'
+            swL = pp.l < pp.l1 ? "LL" : pp.l > pp.l1 ? "HL" : na
+            f_drawLabelX((b[rpLN]).i, pp.l, swL, xloc.bar_index, yloc.price, color(na), label.style_label_up  , rpPLC, rpS, text.align_center, 'Swing Low : '  + str.tostring(pp.l, format.mintick))
+    for l = 0 to rpNR - 1 by 1
+        if vpSH
+            sBI = b.i - int(rpVST.get(l) / rpVST.max() * rpLN * rpW) + rpLN * rpW + drpHO
+            eBI = b.i + drpHO + rpLN * rpW
+            llC = rpVST.get(l) / rpVST.max() > vpHVT ? color.from_gradient(rpVST.get(l) / rpVST.max(), vpHVT, 1, vpAVC, vpHVC) : color.from_gradient(rpVST.get(l) / rpVST.max(), 0, vpLVT, vpLVC, vpAVC)
+            dRP.push(box.new(sBI, pLST + (l + 0.1) * pSTP, eBI, pLST + (l + 0.9) * pSTP, color(na), bgcolor = llC))
+        if spSH
+            bbp = 2 * rpVSB.get(l) - rpVST.get(l)
+            sBI = b.i + int( rpVSD.get(l) / rpVSD.max() * rpLN * rpW / 2) + rpLN * rpW + drpHO
+            eBI = b.i + drpHO + rpLN * rpW
+            dRP.push(box.new(sBI, pLST + (l + 0.1) * pSTP, eBI, pLST + (l + 0.9) * pSTP, bbp > 0 ? spBLC : spBRC, bgcolor = bbp > 0 ? spBLC : spBRC))
+        if sdSH and rpVST.get(l) / rpVST.max() < sdTH
+            dRP.push(box.new(b.i - rpLN, pLST + (l + 0.) * pSTP, b.i, pLST + (l + 1.) * pSTP, color(na), bgcolor = pLST + (l + .5) * pSTP > pLST + (rpVST.indexof(rpVST.max()) + .5) * pSTP ? sdCR : sdCS))
+
+//----------------------------------------------------------------------
+// 5h. Combined — Visualization: Smart Money Fib / OTE
+//----------------------------------------------------------------------
+if bullShift or bearShift
+    if not showPrev
+        for l in fibLines
+            line.delete(l)
+        fibLines.clear()
+        for lb in fibLabels
+            label.delete(lb)
+        fibLabels.clear()
+        box.delete(oteBox)
+        oteBox := na
+        line.delete(swingDiag)
+        swingDiag := na
+    else
+        for l in fibLines
+            l.set_x2(bar_index)
+        fibLines.clear()
+        fibLabels.clear()
+        box.delete(oteBox)
+        oteBox    := na
+        swingDiag := na
+
+    if not na(fibAnchorHigh) and not na(fibAnchorLow) and not na(fibAnchorHighBar) and not na(fibAnchorLowBar)
+        bool  isBull   = trendState == 1
+        int   startBar = isBull ? fibAnchorLowBar  : fibAnchorHighBar
+        float startY   = isBull ? fibAnchorLow     : fibAnchorHigh
+        int   endBar   = isBull ? fibAnchorHighBar : fibAnchorLowBar
+        float endY     = isBull ? fibAnchorHigh    : fibAnchorLow
+        color diagCol  = isBull ? color.new(bullCol, 30) : color.new(bearCol, 30)
+
+        if showSwingLine
+            swingDiag := line.new(startBar, startY, endBar, endY,
+                 color = diagCol, width = 1, style = diagStyle)
+
+        for lvl in fibLevels
+            float price = fibPrice(lvl, fibAnchorHigh, fibAnchorLow, isBull)
+            if showFibLines
+                line ln = line.new(startBar, price, bar_index, price,
+                     color = fibLineCol, width = 1, style = fibStyle)
+                fibLines.push(ln)
+                label lb = label.new(bar_index, price,
+                     text      = str.tostring(lvl, "#.###") + "    (" + str.tostring(price, format.mintick) + ")",
+                     style     = label.style_label_left,
+                     color     = color(na),
+                     textcolor = chart.fg_color,
+                     size      = size.small)
+                fibLabels.push(lb)
+
+        if showOTE
+            float oteUpperPrice = fibPrice(oteHighInput, fibAnchorHigh, fibAnchorLow, isBull)
+            float oteLowerPrice = fibPrice(oteLowInput,  fibAnchorHigh, fibAnchorLow, isBull)
+            oteBox := box.new(startBar, math.max(oteUpperPrice, oteLowerPrice),
+                              bar_index, math.min(oteUpperPrice, oteLowerPrice),
+                              border_color = color(na),
+                              bgcolor      = isBull ? oteColBull : oteColBear)
+
+        fibsDrawn := true
+
+if not bullShift and not bearShift and fibsDrawn and fibLines.size() > 0
+    if not na(fibAnchorHigh) and not na(fibAnchorLow) and not na(fibAnchorHighBar) and not na(fibAnchorLowBar)
+        bool  isBull   = trendState == 1
+        int   startBar = isBull ? fibAnchorLowBar  : fibAnchorHighBar
+        float startY   = isBull ? fibAnchorLow     : fibAnchorHigh
+        int   endBar   = isBull ? fibAnchorHighBar : fibAnchorLowBar
+        float endY     = isBull ? fibAnchorHigh    : fibAnchorLow
+        int   idx      = 0
+
+        if showSwingLine and not na(swingDiag)
+            swingDiag.set_x1(startBar)
+            swingDiag.set_y1(startY)
+            swingDiag.set_x2(endBar)
+            swingDiag.set_y2(endY)
+
+        for lvl in fibLevels
+            float price = fibPrice(lvl, fibAnchorHigh, fibAnchorLow, isBull)
+            if showFibLines and idx < fibLines.size()
+                line ln = fibLines.get(idx)
+                ln.set_y1(price)
+                ln.set_y2(price)
+                ln.set_x1(startBar)
+                if extendFibs
+                    ln.set_x2(bar_index)
+                if idx < fibLabels.size()
+                    label lb = fibLabels.get(idx)
+                    lb.set_y(price)
+                    lb.set_x(bar_index)
+                    lb.set_text(str.tostring(lvl, "#.###") + "    (" + str.tostring(price, format.mintick) + ")")
+            idx += 1
+
+        if showOTE and not na(oteBox)
+            float oteUpperPrice = fibPrice(oteHighInput, fibAnchorHigh, fibAnchorLow, isBull)
+            float oteLowerPrice = fibPrice(oteLowInput,  fibAnchorHigh, fibAnchorLow, isBull)
+            oteBox.set_left(startBar)
+            oteBox.set_right(bar_index)
+            oteBox.set_top(math.max(oteUpperPrice, oteLowerPrice))
+            oteBox.set_bottom(math.min(oteUpperPrice, oteLowerPrice))
+
+if extendFibs and fibLines.size() >= 0
+    for l in fibLines
+        l.set_x2(bar_index)
+    if not na(oteBox)
+        oteBox.set_right(bar_index)
+    if fibLabels.size() > 0
+        for lb in fibLabels
+            lb.set_x(bar_index)
+
+if showSwingLbl and not na(pvtHi)
+    label.new(bar_index - pivotLen, pvtHi,
+         text      = str.tostring(pvtHi, format.mintick),
+         style     = label.style_label_down,
+         color     = color(na),
+         textcolor = color.new(bearCol, 20),
+         size      = size.small)
+
+if showSwingLbl and not na(pvtLo)
+    label.new(bar_index - pivotLen, pvtLo,
+         text      = str.tostring(pvtLo, format.mintick),
+         style     = label.style_label_up,
+         color     = color(na),
+         textcolor = color.new(bullCol, 20),
+         size      = size.small)
+
+if bullShift and not na(fibAnchorHigh)
+    line.new(bar_index - pivotLen * 2, fibAnchorHigh, bar_index, fibAnchorHigh,
+         color = color.new(bullCol, 30), width = 4, style = bosStyle)
+    label.new(bar_index - pivotLen, fibAnchorHigh,
+         text      = "HH ▲",
+         style     = label.style_label_down,
+         color     = color.new(bullCol, 20),
+         textcolor = color.white,
+         size      = size.small)
+
+if bearShift and not na(fibAnchorLow)
+    line.new(bar_index - pivotLen * 2, fibAnchorLow, bar_index, fibAnchorLow,
+         color = color.new(bearCol, 30), width = 4, style = bosStyle)
+    label.new(bar_index - pivotLen, fibAnchorLow,
+         text      = "LL ▼",
+         style     = label.style_label_up,
+         color     = color.new(bearCol, 20),
+         textcolor = color.white,
+         size      = size.small)
+
+//----------------------------------------------------------------------
+// 5i. Combined — Visualization: SMT with SXY
+//----------------------------------------------------------------------
+if smtShow
+    if smtLines and smtBearish and not na(smtPrevHH) and not na(smtPrevDH)
+        line.new(smtPrevHB, smtPrevHH, smtLastHB, smtLastHH, color=color.red,   width=1, style=line.style_solid)
+        line.new(smtPrevDHB, smtPrevDH, smtLastDHB, smtLastDH, color=color.green, width=1, style=line.style_dashed)
+    if smtLines and smtBullish and not na(smtPrevLL) and not na(smtPrevDL)
+        line.new(smtPrevLB, smtPrevLL, smtLastLB, smtLastLL, color=color.green, width=1, style=line.style_solid)
+        line.new(smtPrevDLB, smtPrevDL, smtLastDLB, smtLastDL, color=color.red,   width=1, style=line.style_dashed)
+    if smtLabels and smtBearish
+        label.new(smtLastHB, smtLastHH, "SMT\nBearish", style=label.style_label_down, color=color.maroon, textcolor=color.white, size=size.small)
+    if smtLabels and smtBullish
+        label.new(smtLastLB, smtLastLL, "SMT\nBullish",  style=label.style_label_up,   color=color.green, textcolor=color.white, size=size.small)
+
+if smtPanel
+    if na(smtTbl)
+        smtTbl := table.new(position.bottom_right, 2, 4, bgcolor=color.new(color.black, 80), border_width=1, border_color=color.gray)
+    smtChg = (smtSxyC - smtSxyC[1]) / smtSxyC[1] * 100
+    smtClr = smtChg >= 0 ? color.green : color.red
+    table.cell(smtTbl, 0, 0, "SXY",    text_color=color.white, text_size=size.small)
+    table.cell(smtTbl, 1, 0, str.tostring(smtSxyC, format.mintick), text_color=smtClr, text_size=size.small)
+    table.cell(smtTbl, 0, 1, "Chg %",  text_color=color.gray,  text_size=size.small)
+    table.cell(smtTbl, 1, 1, str.tostring(smtChg, "#.##") + "%", text_color=smtClr, text_size=size.small)
+else
+    if not na(smtTbl)
+        table.clear(smtTbl, 0, 0, 1, 3)
+
+//----------------------------------------------------------------------
+// 5j. Combined — Visualization: Dual Log Regression Channels
+//----------------------------------------------------------------------
+if macro_show_channel
+    f_render_channel(macro_length, macro_width, macro_line_w, macro_mid_disp, macro_col_up, macro_col_mid, macro_col_low, macro_col_fill, macro_show_stats, macro_show_vp, macro_bins, macro_max_w, macro_vp_color, macro_extend, macro_ext_bars, macro_show_poc, macro_poc_color)
+if short_show_channel
+    f_render_channel(short_length, short_width, short_line_w, short_mid_disp, short_col_up, short_col_mid, short_col_low, short_col_fill, short_show_stats, short_show_vp, short_bins, short_max_w, short_vp_color, short_extend, short_ext_bars, short_show_poc, short_poc_color)
+
+//----------------------------------------------------------------------
+// 5k. Combined — Visualization: Sessions
+//----------------------------------------------------------------------
+ls = styleFromStr(lineStyle)
+showBoxes = timeframe.in_seconds() < 14400
+
+asiaIn = inSession(asiaSess)
+
+if showBoxes and entered(asiaIn)
+    asiaHigh  := high
+    asiaLow   := low
+    asiaStart := bar_index
+    asiaBox   := box.new(asiaStart, asiaHigh, bar_index, asiaLow,
+                         xloc = xloc.bar_index, border_color = asiaColor,
+                         bgcolor = color.new(asiaColor, boxTransp))
+    line.new(bar_index, close, bar_index, close, xloc = xloc.bar_index,
+             extend = extend.none, color = asiaColor, width = 1, style = ls)
+
+if showBoxes and asiaIn and not na(asiaBox)
+    asiaHigh := math.max(asiaHigh, high)
+    asiaLow  := math.min(asiaLow, low)
+    box.set_top(asiaBox, asiaHigh)
+    box.set_bottom(asiaBox, asiaLow)
+    box.set_right(asiaBox, bar_index)
+
+if showBoxes and exited(asiaIn) and not na(asiaBox)
+    line.new(bar_index, close, bar_index, close, xloc = xloc.bar_index,
+             extend = extend.none, color = asiaColor, width = 1, style = ls)
+    float midY = (asiaHigh + asiaLow) / 2.0
+    int midX   = int(math.round((asiaStart + bar_index) / 2.0))
+    label.new(midX, midY, 'ASIA', style = label.style_label_center,
+              color = color.new(color.white, 100), textcolor = asiaColor, size = size.large)
+    asiaHigh  := na
+    asiaLow   := na
+    asiaStart := na
+    asiaBox   := na
+
+sydIn = inSession(sydSess)
+
+if showBoxes and entered(sydIn)
+    sydHigh  := high
+    sydLow   := low
+    sydStart := bar_index
+    sydBox   := box.new(sydStart, sydHigh, bar_index, sydLow,
+                        xloc = xloc.bar_index, border_color = sydColor,
+                        bgcolor = color.new(sydColor, boxTransp))
+    line.new(bar_index, close, bar_index, close, xloc = xloc.bar_index,
+             extend = extend.none, color = sydColor, width = 1, style = ls)
+
+if showBoxes and sydIn and not na(sydBox)
+    sydHigh := math.max(sydHigh, high)
+    sydLow  := math.min(sydLow, low)
+    box.set_top(sydBox, sydHigh)
+    box.set_bottom(sydBox, sydLow)
+    box.set_right(sydBox, bar_index)
+
+if showBoxes and exited(sydIn) and not na(sydBox)
+    line.new(bar_index, close, bar_index, close, xloc = xloc.bar_index,
+             extend = extend.none, color = sydColor, width = 1, style = ls)
+    float midY = (sydHigh + sydLow) / 2.0
+    int midX   = int(math.round((sydStart + bar_index) / 2.0))
+    label.new(midX, midY, 'SYDNEY', style = label.style_label_center,
+              color = color.new(color.white, 100), textcolor = sydColor, size = size.large)
+    sydHigh  := na
+    sydLow   := na
+    sydStart := na
+    sydBox   := na
+
+londonIn = inSession(lonSess)
+
+if showBoxes and entered(londonIn)
+    lonHigh  := high
+    lonLow   := low
+    lonStart := bar_index
+    lonBox   := box.new(lonStart, lonHigh, bar_index, lonLow, xloc = xloc.bar_index, border_color = lonColor, bgcolor = color.new(lonColor, boxTransp))
+    line.new(bar_index, close, bar_index, close, xloc = xloc.bar_index,
+             extend = extend.none, color = lonColor, width = 1, style = ls)
+
+if showBoxes and londonIn and not na(lonBox)
+    lonHigh := math.max(lonHigh, high)
+    lonLow  := math.min(lonLow, low)
+    box.set_top(lonBox, lonHigh)
+    box.set_bottom(lonBox, lonLow)
+    box.set_right(lonBox, bar_index)
+
+if showBoxes and exited(londonIn) and not na(lonBox)
+    line.new(bar_index, close, bar_index, close, xloc = xloc.bar_index,
+             extend = extend.none, color = lonColor, width = 1, style = ls)
+    float midY = (lonHigh + lonLow) / 2.0
+    int midX   = int(math.round((lonStart + bar_index) / 2.0))
+    label.new(midX, midY, 'LONDON', style = label.style_label_center,
+              color = color.new(color.white, 100), textcolor = lonColor, size = size.large)
+    lonHigh  := na
+    lonLow   := na
+    lonStart := na
+    lonBox   := na
+
+nyIn = inSession(nySess)
+
+if showBoxes and entered(nyIn)
+    nyHigh  := high
+    nyLow   := low
+    nyStart := bar_index
+    nyBox   := box.new(nyStart, nyHigh, bar_index, nyLow,
+                       xloc = xloc.bar_index, border_color = nyColor,
+                       bgcolor = color.new(nyColor, boxTransp))
+    line.new(bar_index, close, bar_index, close, xloc = xloc.bar_index,
+             extend = extend.none, color = nyColor, width = 1, style = ls)
+
+if showBoxes and nyIn and not na(nyBox)
+    nyHigh := math.max(nyHigh, high)
+    nyLow  := math.min(nyLow, low)
+    box.set_top(nyBox, nyHigh)
+    box.set_bottom(nyBox, nyLow)
+    box.set_right(nyBox, bar_index)
+
+if showBoxes and exited(nyIn) and not na(nyBox)
+    line.new(bar_index, close, bar_index, close, xloc = xloc.bar_index,
+             extend = extend.none, color = nyColor, width = 1, style = ls)
+    float midY = (nyHigh + nyLow) / 2.0
+    int midX   = int(math.round((nyStart + bar_index) / 2.0))
+    label.new(midX, midY, 'NEW YORK', style = label.style_label_center,
+              color = color.new(color.white, 100), textcolor = nyColor, size = size.large)
+    nyHigh  := na
+    nyLow   := na
+    nyStart := na
+    nyBox   := na
+
+//----------------------------------------------------------------------
+// 5n. Combined — Donchian Channels
+//----------------------------------------------------------------------
+dcUpper = ta.highest(dcLength1)
+dcLower = ta.lowest(dcLength2)
+dcBasis = math.avg(dcUpper, dcLower)
+
+plot(dcShowLower ? dcLower : na, 'Donchian Lower', dcColorLower, dcLineWidth, style = plot.style_line, offset = dcOffset)
+plot(dcShowUpper ? dcUpper : na, 'Donchian Upper', dcColorUpper, dcLineWidth, style = plot.style_line, offset = dcOffset)
+plot(dcShowMid ? dcBasis : na, 'Donchian Mid', dcColorMid, dcMidLineWidth, style = plot.style_line, offset = dcOffset)
+
+//----------------------------------------------------------------------
+// 5m. Williams Fractals
+//----------------------------------------------------------------------
+wfN = wfPeriods
+
+bool upflagDownFrontier = true
+bool upflagUpFrontier0 = true
+bool upflagUpFrontier1 = true
+bool upflagUpFrontier2 = true
+bool upflagUpFrontier3 = true
+bool upflagUpFrontier4 = true
+
+for i = 1 to wfN
+    upflagDownFrontier := upflagDownFrontier and (high[wfN-i] < high[wfN])
+    upflagUpFrontier0 := upflagUpFrontier0 and (high[wfN+i] < high[wfN])
+    upflagUpFrontier1 := upflagUpFrontier1 and (high[wfN+1] <= high[wfN] and high[wfN+i + 1] < high[wfN])
+    upflagUpFrontier2 := upflagUpFrontier2 and (high[wfN+1] <= high[wfN] and high[wfN+2] <= high[wfN] and high[wfN+i + 2] < high[wfN])
+    upflagUpFrontier3 := upflagUpFrontier3 and (high[wfN+1] <= high[wfN] and high[wfN+2] <= high[wfN] and high[wfN+3] <= high[wfN] and high[wfN+i + 3] < high[wfN])
+    upflagUpFrontier4 := upflagUpFrontier4 and (high[wfN+1] <= high[wfN] and high[wfN+2] <= high[wfN] and high[wfN+3] <= high[wfN] and high[wfN+4] <= high[wfN] and high[wfN+i + 4] < high[wfN])
+flagUpFrontier = upflagUpFrontier0 or upflagUpFrontier1 or upflagUpFrontier2 or upflagUpFrontier3 or upflagUpFrontier4
+
+upFractal = (upflagDownFrontier and flagUpFrontier)
+
+bool downflagDownFrontier = true
+bool downflagUpFrontier0 = true
+bool downflagUpFrontier1 = true
+bool downflagUpFrontier2 = true
+bool downflagUpFrontier3 = true
+bool downflagUpFrontier4 = true
+
+for i = 1 to wfN
+    downflagDownFrontier := downflagDownFrontier and (low[wfN-i] > low[wfN])
+    downflagUpFrontier0 := downflagUpFrontier0 and (low[wfN+i] > low[wfN])
+    downflagUpFrontier1 := downflagUpFrontier1 and (low[wfN+1] >= low[wfN] and low[wfN+i + 1] > low[wfN])
+    downflagUpFrontier2 := downflagUpFrontier2 and (low[wfN+1] >= low[wfN] and low[wfN+2] >= low[wfN] and low[wfN+i + 2] > low[wfN])
+    downflagUpFrontier3 := downflagUpFrontier3 and (low[wfN+1] >= low[wfN] and low[wfN+2] >= low[wfN] and low[wfN+3] >= low[wfN] and low[wfN+i + 3] > low[wfN])
+    downflagUpFrontier4 := downflagUpFrontier4 and (low[wfN+1] >= low[wfN] and low[wfN+2] >= low[wfN] and low[wfN+3] >= low[wfN] and low[wfN+4] >= low[wfN] and low[wfN+i + 4] > low[wfN])
+flagDownFrontier = downflagUpFrontier0 or downflagUpFrontier1 or downflagUpFrontier2 or downflagUpFrontier3 or downflagUpFrontier4
+
+downFractal = (downflagDownFrontier and flagDownFrontier)
+
+plotshape(wfShow and downFractal, style=shape.triangledown, location=location.belowbar, offset=-wfN, color=wfBearColor, size=size.small, title='Williams Bearish Fractal')
+plotshape(wfShow and upFractal,   style=shape.triangleup,   location=location.abovebar, offset=-wfN, color=wfBullColor, size=size.small, title='Williams Bullish Fractal')
+
+//----------------------------------------------------------------------
+// 5n. Larry Williams — Market Structure
+//----------------------------------------------------------------------
+//Add values
+if swHi_arr_highs.size() > 0
+    if high > swHi_arr_highs.first() and sw_dir == 1
+        swHi_arr_highs.unshift(high)
+        swHi_arr_lows.unshift(low)
+        h_bi := bar_index
+
+if swLow_arr_lows.size() > 0
+    if low < swLow_arr_lows.first() and sw_dir == -1
+        swLow_arr_highs.unshift(high)
+        swLow_arr_lows.unshift(low)
+        l_bi := bar_index
+
+//Trend Change code
+sw_dir_ser = sw_dir
+if swHi_arr_lows.size() > 0 and sw_dir == 1 
+    if low < swHi_arr_lows.first()
+        sw_dir := -1
+        swLow_arr_highs.unshift(high)
+        swLow_arr_lows.unshift(low)
+        l_bi := bar_index
+
+if swHi_arr_highs.size() > 0 and sw_dir == -1 and sw_dir_ser == -1
+    if high > swLow_arr_highs.first()
+        sw_dir := 1
+        swHi_arr_highs.unshift(high)
+        swHi_arr_lows.unshift(low)
+        h_bi := bar_index
+
+//Init
+if swHi_arr_highs.size() == 0
+    swHi_arr_highs.unshift(high)
+    swLow_arr_highs.unshift(high)
+
+if swLow_arr_highs.size() == 0
+    swLow_arr_highs.unshift(high)
+    swLow_arr_lows.unshift(high)
+
+sw_dir_ult_ser = sw_dir
+
+//Drawing lines on trend change
+if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
+    up_line := line.new(l_bi , swLow_arr_lows.first(), bar_index, swHi_arr_highs.first(), color=color.green, width=3)
+    dw_line.set_xy2(l_bi, swLow_arr_lows.first())
+
+if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1 and swLow_arr_lows.size() > 0
+    dw_line := line.new(h_bi , swHi_arr_highs.first(), bar_index, swLow_arr_lows.first(), color=color.red, width=3)
+    up_line.set_xy2(h_bi, swHi_arr_highs.first())
+
+//Updating the lines
+if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == 1 
+    if swHi_arr_highs.size() > swHi_arr_highs.size()[1]
+        up_line.set_xy2(bar_index, swHi_arr_highs.first())
+
+if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == -1 
+    if swLow_arr_highs.size() > swLow_arr_highs.size()[1]
+        dw_line.set_xy2(bar_index, swLow_arr_lows.first())
+
+//Intermediate Trend Detector
+if im_tops.size() > 0 and im_dir == 1 and sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1
+    if swHi_arr_highs.first() < im_tops.first()
+        im_dir := -1
+        if sh_im
+            label.new(h_bi, swHi_arr_highs.first(), color = color.rgb(255, 82, 82, 70), style=label.style_label_down)
+
+if im_bot.size() > 0 and im_dir == -1 and sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1
+    if swLow_arr_lows.first() > im_bot.first()
+        im_dir := 1
+        if sh_im
+            label.new(l_bi, swLow_arr_lows.first(), color = color.rgb(76, 175, 79, 70), style=label.style_label_up)
+
+if sw_dir_ult_ser == 1 and sw_dir_ult_ser[1] == -1 and swLow_arr_lows.size() > 0
+    im_bot.unshift(swLow_arr_lows.first())
+
+if sw_dir_ult_ser == -1 and sw_dir_ult_ser[1] == 1 and swHi_arr_highs.size() > 0
+    im_tops.unshift(swHi_arr_highs.first())
+
+//----------------------------------------------------------------------
+// 5p. SXY Overlay Correction
+//----------------------------------------------------------------------
+sxyOClose = request.security(sxyOverlaySym, timeframe.period, close)
+
+if not na(sxyOClose)
+    sxyOLowest  := na(sxyOLowest)  ? sxyOClose : math.min(sxyOLowest, sxyOClose)
+    sxyOHighest := na(sxyOHighest) ? sxyOClose : math.max(sxyOHighest, sxyOClose)
+
+sxyORange = sxyOHighest - sxyOLowest
+sxyONorm  = sxyORange > 0 ? (sxyOClose - sxyOLowest) / sxyORange : 0.5
+
+sxyOMainHigh  = ta.highest(high, sxyOverlayLen)
+sxyOMainLow   = ta.lowest(low, sxyOverlayLen)
+sxyOPriceRange = sxyOMainHigh - sxyOMainLow
+sxyOEffectiveRange = sxyOPriceRange > 0 ? sxyOPriceRange : syminfo.mintick * 100
+
+sxyOOverlayVal = sxyOverlayInv ? sxyOMainHigh - (sxyONorm * sxyOEffectiveRange) : sxyOMainLow + (sxyONorm * sxyOEffectiveRange)
+
+plot(sxyOverlayShow ? sxyOOverlayVal : na, "SXY", #1E90FF, 2)
+
+//======================================================================
+// SECTION 6 — ALERTS
+//======================================================================
+
+// 6a. MMMM ICT Alerts
+Alert.AlertSender(MitigationAlert_Bull, MMXM_Bull, AlertName, 'Bullish', 'Order Block Signal', 'Full', Frequncy, UTC, 'Off', 'Alert Demand Mitigation in MMXM ICT Setup', open, high, low, close, 0, 0, 0, 0, 0)
+Alert.AlertSender(MitigationAlert_Bear, MMXM_Bear, AlertName, 'Bearish', 'Order Block Signal', 'Full', Frequncy, UTC, 'Off', 'Alert Supply Mitigation in MMXM ICT Setup', open, high, low, close, 0, 0, 0, 0, 0)
+
+// 6b. Combined SMT SXY Alerts
+alertcondition(smtBearish, title="Bearish SMT Divergence", message="Bearish SMT divergence detected on {{ticker}} vs SXY")
+alertcondition(smtBullish, title="Bullish SMT Divergence", message="Bullish SMT divergence detected on {{ticker}} vs SXY")
+
+
